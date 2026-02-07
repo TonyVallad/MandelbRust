@@ -1,4 +1,5 @@
 use mandelbrust_core::IterationResult;
+use rayon::prelude::*;
 
 use crate::aa::AaSamples;
 use crate::buffer::RenderBuffer;
@@ -49,14 +50,16 @@ impl Palette {
     pub fn colorize(&self, iter_buf: &IterationBuffer, smooth: bool) -> RenderBuffer {
         let len = iter_buf.data.len();
         let mut pixels = vec![0u8; len * 4];
-        for (i, &result) in iter_buf.data.iter().enumerate() {
-            let c = self.color(result, smooth);
-            let off = i * 4;
-            pixels[off] = c[0];
-            pixels[off + 1] = c[1];
-            pixels[off + 2] = c[2];
-            pixels[off + 3] = c[3];
-        }
+        pixels
+            .par_chunks_mut(4)
+            .zip(iter_buf.data.par_iter())
+            .for_each(|(pixel, &result)| {
+                let c = self.color(result, smooth);
+                pixel[0] = c[0];
+                pixel[1] = c[1];
+                pixel[2] = c[2];
+                pixel[3] = c[3];
+            });
         RenderBuffer {
             width: iter_buf.width,
             height: iter_buf.height,
@@ -81,9 +84,12 @@ impl Palette {
         let mut pixels = vec![0u8; len * 4];
         let n = aa.aa_level * aa.aa_level;
 
-        for y in 0..h {
-            for x in 0..w {
-                let idx = (y * w + x) as usize;
+        pixels
+            .par_chunks_mut(4)
+            .enumerate()
+            .for_each(|(idx, pixel)| {
+                let x = (idx as u32) % w;
+                let y = (idx as u32) / w;
                 let color = if let Some(samples) = aa.samples(x, y) {
                     let (mut r, mut g, mut b) = (0u32, 0u32, 0u32);
                     for &s in samples {
@@ -96,13 +102,11 @@ impl Palette {
                 } else {
                     self.color(iter_buf.data[idx], smooth)
                 };
-                let off = idx * 4;
-                pixels[off] = color[0];
-                pixels[off + 1] = color[1];
-                pixels[off + 2] = color[2];
-                pixels[off + 3] = color[3];
-            }
-        }
+                pixel[0] = color[0];
+                pixel[1] = color[1];
+                pixel[2] = color[2];
+                pixel[3] = color[3];
+            });
 
         RenderBuffer {
             width: w,

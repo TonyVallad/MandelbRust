@@ -1,5 +1,7 @@
 # MandelbRust — Development Roadmap
 
+> **Note:** This is the original roadmap covering Phases 0–6 (all complete). For Phase 7 onward, see [**roadmap-v2.md**](roadmap-v2.md).
+
 This document describes the **planned development phases** for MandelbRust, from initial scaffolding to a fully-featured high-performance fractal explorer.  
 Each phase produces a usable, testable state of the application.
 

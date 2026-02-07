@@ -26,16 +26,17 @@ Each phase is a self-contained unit of work that produces a testable, working st
 | 4 | Progressive Rendering & UX | Done |
 | 5 | Coloring System & Display Options | Done |
 | 6 | Bookmarks System | Done |
+| 7 | Quick Performance Wins | Done |
 
 ---
 
-## Phase 7 — Quick Performance Wins
+## Phase 7 — Quick Performance Wins ✅
 
 **Objective:** Improve render speed with low-risk, high-reward changes that require no architectural modifications.
 
 **Reference:** [optimization-report.md](optimization-report.md) sections 2, 6, 13.
 
-### Task 7.1 — Release profile optimization
+### Task 7.1 — Release profile optimization ✅
 
 **File:** `Cargo.toml` (workspace root)
 
@@ -51,7 +52,7 @@ codegen-units = 1
 
 ---
 
-### Task 7.2 — Cache `escape_radius_sq` in `FractalParams`
+### Task 7.2 — Cache `escape_radius_sq` in `FractalParams` ✅
 
 **File:** `mandelbrust-core/src/fractal.rs`
 
@@ -66,7 +67,7 @@ Currently `escape_radius_sq()` recomputes `escape_radius * escape_radius` on eve
 
 ---
 
-### Task 7.3 — Reduce periodicity check frequency
+### Task 7.3 — Reduce periodicity check frequency ✅
 
 **Files:** `mandelbrust-core/src/mandelbrot.rs`, `mandelbrust-core/src/julia.rs`
 
@@ -78,7 +79,7 @@ In both `iterate()` methods, the Brent's cycle detection comparison runs every i
 
 ---
 
-### Task 7.4 — Parallelize colorization
+### Task 7.4 — Parallelize colorization ✅
 
 **File:** `mandelbrust-render/src/palette.rs`
 
@@ -92,7 +93,7 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 
 ---
 
-### Task 7.5 — HashMap for symmetry tile matching
+### Task 7.5 — HashMap for symmetry tile matching ✅
 
 **File:** `mandelbrust-render/src/tile.rs`
 
@@ -108,11 +109,11 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 
 ### Deliverables — Phase 7
 
-- [ ] Release profile has `lto = "fat"` and `codegen-units = 1`
-- [ ] `escape_radius_sq` is cached, not recomputed
-- [ ] Periodicity check runs less frequently (skip first 32, then every 4th)
-- [ ] `colorize()` and `colorize_aa()` use Rayon
-- [ ] Symmetry matching uses `HashMap` instead of linear search
+- [x] Release profile has `lto = "fat"` and `codegen-units = 1`
+- [x] `escape_radius_sq` is cached, not recomputed
+- [x] Periodicity check runs less frequently (skip first 32, then every 4th)
+- [x] `colorize()` and `colorize_aa()` use Rayon
+- [x] Symmetry matching uses `HashMap` instead of linear search
 - [ ] All benchmarks re-run; results logged in a comment or benchmark output
 
 ---

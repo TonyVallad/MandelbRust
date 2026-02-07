@@ -68,16 +68,19 @@ impl Fractal for Mandelbrot {
             }
 
             // Periodicity detection (Brent's algorithm).
-            // If the orbit revisits a previous point, it is periodic → interior.
-            if (z.re - old_z.re).abs() < 1e-13 && (z.im - old_z.im).abs() < 1e-13 {
-                return IterationResult::Interior;
-            }
+            // Skip the first 32 iterations (orbits rarely converge early)
+            // and only check every 4th iteration to reduce branch overhead.
+            if n >= 32 && n & 3 == 0 {
+                if (z.re - old_z.re).abs() < 1e-13 && (z.im - old_z.im).abs() < 1e-13 {
+                    return IterationResult::Interior;
+                }
 
-            period += 1;
-            if period > check {
-                old_z = z;
-                period = 0;
-                check = check.saturating_mul(2);
+                period += 1;
+                if period > check {
+                    old_z = z;
+                    period = 0;
+                    check = check.saturating_mul(2);
+                }
             }
         }
 

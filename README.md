@@ -11,7 +11,7 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 
 ## Status
 
-**Active development** — Phases 0–6 complete. The core explorer is fully functional with real-time rendering, multiple color palettes, adaptive anti-aliasing, and a persistent bookmark system.
+**Active development** — Phases 0–7 complete. The core explorer is fully functional with real-time rendering, multiple color palettes, adaptive anti-aliasing, a persistent bookmark system, and an optimized release profile (LTO, parallel colorization, cached hot-loop values).
 
 ## Current Features
 
@@ -147,7 +147,9 @@ MandelbRust/
 ## Documentation
 
 - [**Project Overview**](docs/overview.md) — architecture, design decisions, and full technical specification
-- [**Development Roadmap**](docs/roadmap.md) — phased development plan with progress tracking
+- [**Development Roadmap**](docs/roadmap-v2.md) — phased development plan with progress tracking (Phase 7+)
+- [**Original Roadmap**](docs/roadmap.md) — Phases 0–6 (all complete)
+- [**Optimization Report**](docs/optimization-report.md) — technical analysis of performance opportunities
 
 ## License
 

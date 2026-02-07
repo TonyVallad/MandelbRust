@@ -71,6 +71,8 @@ pub fn classify_tiles_for_symmetry(
     viewport_height: u32,
     center_im: f64,
 ) -> Option<Vec<ClassifiedTile>> {
+    use std::collections::HashMap;
+
     // Only apply when the viewport is exactly centred on the real axis.
     if center_im.abs() > f64::EPSILON {
         return None;
@@ -85,7 +87,13 @@ pub fn classify_tiles_for_symmetry(
         })
         .collect();
 
-    // Build a lookup from (x, y) → index for mirror matching.
+    // Build a lookup from (x, y) → index for O(1) mirror matching.
+    let tile_lookup: HashMap<(u32, u32), usize> = classified
+        .iter()
+        .enumerate()
+        .map(|(i, ct)| ((ct.tile.x, ct.tile.y), i))
+        .collect();
+
     let tile_count = classified.len();
     for i in 0..tile_count {
         let tile = classified[i].tile;
@@ -101,7 +109,7 @@ pub fn classify_tiles_for_symmetry(
         if tile_bottom <= half_h {
             // Find the mirror tile in the lower half.
             let mirror_y = viewport_height - tile.y - tile.height;
-            if let Some(j) = find_tile_at(&classified, tile.x, mirror_y, tile.width, tile.height) {
+            if let Some(&j) = tile_lookup.get(&(tile.x, mirror_y)) {
                 if i != j {
                     classified[i].kind = TileKind::Primary { mirror_index: j };
                     classified[j].kind = TileKind::Mirror { primary_index: i };
@@ -111,18 +119,6 @@ pub fn classify_tiles_for_symmetry(
     }
 
     Some(classified)
-}
-
-fn find_tile_at(
-    tiles: &[ClassifiedTile],
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-) -> Option<usize> {
-    tiles.iter().position(|ct| {
-        ct.tile.x == x && ct.tile.y == y && ct.tile.width == width && ct.tile.height == height
-    })
 }
 
 #[cfg(test)]

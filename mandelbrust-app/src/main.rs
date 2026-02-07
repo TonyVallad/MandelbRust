@@ -244,10 +244,8 @@ impl MandelbRustApp {
                 };
                 let vp = Viewport::new(Complex::new(lv.center_re, lv.center_im), lv.scale, w, h)
                     .unwrap_or_else(|_| Viewport::default_mandelbrot(w, h));
-                let p = FractalParams {
-                    max_iterations: lv.max_iterations,
-                    escape_radius: lv.escape_radius,
-                };
+                let p = FractalParams::new(lv.max_iterations, lv.escape_radius)
+                    .unwrap_or_default();
                 info!(
                     "Restoring last view: {} at zoom {:.2e}",
                     lv.mode,
@@ -473,7 +471,7 @@ impl MandelbRustApp {
         };
         self.julia_c = Complex::new(bm.julia_c_re, bm.julia_c_im);
         self.params.max_iterations = bm.max_iterations;
-        self.params.escape_radius = bm.escape_radius;
+        self.params.set_escape_radius(bm.escape_radius);
         if bm.palette_index < self.palettes.len() {
             self.palette_index = bm.palette_index;
         }
@@ -557,10 +555,8 @@ impl MandelbRustApp {
             return self.params;
         }
         let bonus = (zoom.log2() * ADAPTIVE_ITER_RATE) as u32;
-        FractalParams {
-            max_iterations: self.params.max_iterations.saturating_add(bonus),
-            ..self.params
-        }
+        self.params
+            .with_max_iterations(self.params.max_iterations.saturating_add(bonus))
     }
 
     fn effective_max_iterations(&self) -> u32 {
@@ -1456,7 +1452,7 @@ impl MandelbRustApp {
                                 .logarithmic(true),
                         );
                         if (escape_r - old_escape).abs() > 0.01 {
-                            self.params.escape_radius = escape_r as f64;
+                            self.params.set_escape_radius(escape_r as f64);
                             params_changed = true;
                         }
 
@@ -2600,10 +2596,7 @@ fn defaults_for(
     (
         FractalMode::Mandelbrot,
         Julia::default_c(),
-        FractalParams {
-            max_iterations: prefs.default_max_iterations,
-            ..FractalParams::default()
-        },
+        FractalParams::default().with_max_iterations(prefs.default_max_iterations),
         Viewport::default_mandelbrot(w, h),
         prefs.default_palette_index,
         true,

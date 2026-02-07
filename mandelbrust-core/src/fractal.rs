@@ -32,7 +32,10 @@ impl IterationResult {
 }
 
 /// Parameters controlling fractal iteration.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+///
+/// The cached `escape_radius_sq` field is automatically recomputed on
+/// deserialization so bookmarks and preferences always stay consistent.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 pub struct FractalParams {
     /// Maximum number of iterations before declaring a point interior.
     pub max_iterations: u32,
@@ -40,6 +43,28 @@ pub struct FractalParams {
     /// Bailout radius — if `|z|` exceeds this, the orbit has escaped.
     /// Stored directly; the iteration loop compares against `escape_radius²`.
     pub escape_radius: f64,
+
+    /// Cached `escape_radius * escape_radius`, precomputed to avoid
+    /// redundant multiplication on every `iterate()` call.
+    #[serde(skip)]
+    escape_radius_sq: f64,
+}
+
+/// Helper for deserialization — recomputes the cached square on load.
+impl<'de> serde::Deserialize<'de> for FractalParams {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Raw {
+            max_iterations: u32,
+            escape_radius: f64,
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        Ok(Self {
+            max_iterations: raw.max_iterations,
+            escape_radius: raw.escape_radius,
+            escape_radius_sq: raw.escape_radius * raw.escape_radius,
+        })
+    }
 }
 
 impl FractalParams {
@@ -56,13 +81,28 @@ impl FractalParams {
         Ok(Self {
             max_iterations,
             escape_radius,
+            escape_radius_sq: escape_radius * escape_radius,
         })
     }
 
     /// Pre-computed squared escape radius for the inner loop.
     #[inline]
     pub fn escape_radius_sq(&self) -> f64 {
-        self.escape_radius * self.escape_radius
+        self.escape_radius_sq
+    }
+
+    /// Update the escape radius and recompute the cached square.
+    pub fn set_escape_radius(&mut self, r: f64) {
+        self.escape_radius = r;
+        self.escape_radius_sq = r * r;
+    }
+
+    /// Return a copy with a different `max_iterations` value.
+    pub fn with_max_iterations(self, max_iterations: u32) -> Self {
+        Self {
+            max_iterations,
+            ..self
+        }
     }
 }
 
@@ -71,6 +111,7 @@ impl Default for FractalParams {
         Self {
             max_iterations: Self::DEFAULT_MAX_ITERATIONS,
             escape_radius: Self::DEFAULT_ESCAPE_RADIUS,
+            escape_radius_sq: Self::DEFAULT_ESCAPE_RADIUS * Self::DEFAULT_ESCAPE_RADIUS,
         }
     }
 }

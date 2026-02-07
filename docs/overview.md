@@ -138,9 +138,11 @@ The trait is used via **static dispatch** (generics, not `dyn Fractal`), ensurin
 ### Computation Optimizations
 The iteration engine applies several techniques to minimize unnecessary work:
 - **Cardioid & period-2 bulb check** — closed-form test that skips iteration entirely for ~30–40% of points at default zoom
-- **Periodicity detection** (Brent's algorithm) — detects orbital cycles to exit early for interior points, avoiding full `max_iter` cost
+- **Periodicity detection** (Brent's algorithm) — detects orbital cycles to exit early for interior points, avoiding full `max_iter` cost. The check is deferred for the first 32 iterations and runs every 4th iteration thereafter, reducing branch overhead in the hot loop
+- **Cached escape radius** — `escape_radius²` is precomputed and cached in `FractalParams`, avoiding a redundant multiplication on every `iterate()` call
 - **Deferred smooth formula** — the iteration loop stores only raw `(n, |z|²)` at escape; the expensive `ln(ln(...))` smooth coloring formula is computed once during the coloring pass, not inside the hot loop
-- **Real-axis symmetry** — for the Mandelbrot set, only the top half is computed when the viewport straddles `im = 0`; results are mirrored for the bottom half
+- **Real-axis symmetry** — for the Mandelbrot set, only the top half is computed when the viewport straddles `im = 0`; results are mirrored for the bottom half. Mirror tile lookup uses a `HashMap` for O(1) matching
+- **Parallel colorization** — `colorize()` and `colorize_aa()` use Rayon's `par_chunks_mut` to distribute pixel coloring across all CPU cores
 
 ### Precision Limits
 Standard `f64` arithmetic limits useful zoom depth to approximately 10^15. Beyond this, visual artifacts appear. The application detects and warns when approaching this limit (precision warning displayed in the HUD). Deep zoom techniques (perturbation theory, arbitrary precision) are planned as future enhancements.
@@ -347,6 +349,8 @@ Animations are deterministic and reproducible.
 
 No GPU is required; performance is achieved via CPU parallelism and careful architecture.
 GPU compute may be added later without redesigning the core.
+
+The release profile uses **full LTO** (`lto = "fat"`) and a single codegen unit (`codegen-units = 1`) for maximum cross-crate inlining and optimization.
 
 ---
 
