@@ -1,6 +1,9 @@
-# MandelbRust
+<h1 align="center">MandelbRust</h1>
+<p align="center">A high-performance, native fractal explorer written in <strong>Rust</strong>.</p>
 
-A high-performance, native fractal explorer written in **Rust**.
+<p align="center">
+  <img src="docs/img/Screenshot_Main.png" alt="MandelbRust — Julia set exploration" width="800">
+</p>
 
 MandelbRust provides real-time, interactive exploration of the Mandelbrot set and Julia sets using a Google Maps-like navigation model. It is built around heavy multithreading, progressive rendering, and a clean separation between math, rendering, and UI.
 
@@ -33,6 +36,26 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 - **Selection-box zoom** — right-click drag to zoom into a drawn rectangle
 - **Crosshair & center marker** — toggle for precise navigation
 
+## Bookmark Explorer
+
+<p align="center">
+  <img src="docs/img/Screenshot_Bookmark_Explorer.png" alt="Bookmark explorer open over a Mandelbrot render" width="800">
+</p>
+
+<p align="center">
+  <img src="docs/img/Screenshot_Bookmark_Explorer_Window.png" alt="Bookmark explorer window close-up" width="550">
+</p>
+
+Save, search, filter, and jump to exploration states. Each bookmark is a self-contained JSON file with an embedded thumbnail, making it easy to share locations by simply copying a file.
+
+## Color Palettes & Controls
+
+<p align="center">
+  <img src="docs/img/Screenshot_Color_Palette.png" alt="Palette picker popup with Fire palette" width="800">
+</p>
+
+Five built-in palettes with smooth coloring. The palette picker popup lets you preview and switch palettes instantly — no re-render needed.
+
 ## Controls
 
 ### Mouse
@@ -60,9 +83,13 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 | `Shift+Backspace` | View history forward |
 | `Escape` | Close dialogs / help / settings, cancel render |
 
-### Toolbar Icons (top-right)
+### Toolbar Icons & Help
 
-Navigate back/forward, reset view, palette picker, cycle AA, smooth coloring, save bookmark, bookmark explorer, controls & shortcuts, settings — all accessible from the icon bar. Stateful icons dim when their feature is off.
+<p align="center">
+  <img src="docs/img/Screenshot_Controls_and_Shortcuts.png" alt="Controls and shortcuts window" width="280">
+</p>
+
+Navigate back/forward, reset view, palette picker, cycle AA, smooth coloring, save bookmark, bookmark explorer, controls & shortcuts, settings — all accessible from the icon bar. Stateful icons dim when their feature is off. Press the help icon to see the full reference shown above.
 
 ## Planned Features
 
