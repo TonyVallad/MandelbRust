@@ -13,6 +13,16 @@ target
 # Contains mutation testing data
 **/mutants.out*/
 
+# Bookmarks (user data, may contain large base64 thumbnails)
+bookmarks/
+
+# Legacy migration artifacts
+bookmarks.json.migrated
+thumbnails.migrated/
+
+# Exported images and animation frames
+exports/
+
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore

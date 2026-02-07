@@ -4,36 +4,102 @@ A high-performance, native fractal explorer written in **Rust**.
 
 MandelbRust provides real-time, interactive exploration of the Mandelbrot set and Julia sets using a Google Maps-like navigation model. It is built around heavy multithreading, progressive rendering, and a clean separation between math, rendering, and UI.
 
+This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZP), a QBasic fractal explorer by the same author.
+
 ## Status
 
-**Early development** — the project is in the planning and scaffolding phase.
+**Active development** — Phases 0–6 complete. The core explorer is fully functional with real-time rendering, multiple color palettes, adaptive anti-aliasing, and a persistent bookmark system.
+
+## Current Features
+
+- **Real-time exploration** — smooth pan and zoom with mouse, keyboard, and Google Maps-style controls
+- **Mandelbrot & Julia sets** — switch modes via the fractal parameters panel; Shift+Click to pick Julia constant
+- **Multithreaded tiled renderer** — parallel CPU rendering via Rayon with automatic load balancing
+- **Progressive rendering** — instant low-resolution preview on a background thread, asynchronous refinement to full quality
+- **Computation optimizations** — cardioid/bulb checks, periodicity detection (Brent's), real-axis symmetry, border tracing
+- **5 color palettes** — Classic, Fire, Ocean, Neon, Grayscale with smooth coloring and a popup palette picker for instant switching
+- **Adaptive anti-aliasing** — boundary-aware supersampling (2×2 / 4×4) that targets only edge pixels
+- **Pan optimization** — preserves rendered quality during drag; only newly exposed edges are re-rendered
+- **Bookmark system** — self-contained, one-file-per-bookmark JSON storage with embedded base64 PNG thumbnails for easy sharing
+- **Bookmark explorer** — search, sort (A-Z / date), fractal tabs, independent favorites toggle, hierarchical label filtering (whitelist / blacklist), scrollable thumbnail grid
+- **Update or save new** — pressing S (or the toolbar icon) after opening a bookmark offers to update it in-place or save a new one
+- **Configurable bookmarks directory** — set from Settings with a native folder picker; default is the project root
+- **Application preferences** — persistent settings including window size, defaults, restore-last-view, and bookmarks folder
+- **Legacy import** — old MSZP save files can be imported as bookmarks
+- **Adaptive iterations** — max iterations scale automatically with zoom depth
+- **Material Symbols icon toolbar** — top-right icon bar with state-aware dimming (navigation, palette, AA, smooth coloring, bookmarks, help, settings)
+- **Four-corner HUD** — viewport info (top-left), icon toolbar and cursor coords (top-right), fractal parameters (bottom-left), render stats (bottom-right); toggle all with H
+- **Controls & shortcuts window** — lists all keyboard, mouse, and toolbar actions in a clean reference panel
+- **Selection-box zoom** — right-click drag to zoom into a drawn rectangle
+- **Crosshair & center marker** — toggle for precise navigation
+
+## Controls
+
+### Mouse
+
+| Action | Effect |
+|---|---|
+| Scroll wheel | Zoom at cursor |
+| Left-drag | Pan |
+| Right-drag | Selection rectangle zoom |
+| Shift + Click | Set Julia constant (in Julia mode) |
+
+### Keyboard
+
+| Key | Action |
+|---|---|
+| Arrow keys | Pan viewport |
+| `+` / `-` | Zoom in / out |
+| `R` | Reset view |
+| `H` | Toggle entire HUD (hides all overlays, toolbar, panels) |
+| `C` | Toggle crosshair |
+| `A` | Cycle AA (Off / 2×2 / 4×4) |
+| `S` | Save / update bookmark |
+| `B` | Toggle bookmark explorer |
+| `Backspace` | View history back |
+| `Shift+Backspace` | View history forward |
+| `Escape` | Close dialogs / help / settings, cancel render |
+
+### Toolbar Icons (top-right)
+
+Navigate back/forward, reset view, palette picker, cycle AA, smooth coloring, save bookmark, bookmark explorer, controls & shortcuts, settings — all accessible from the icon bar. Stateful icons dim when their feature is off.
 
 ## Planned Features
 
-- **Real-time exploration** — smooth pan and zoom with mouse and keyboard
-- **Mandelbrot & Julia sets** — extensible architecture for additional fractal types
-- **Multithreaded tiled renderer** — parallel CPU rendering via Rayon with automatic load balancing
-- **Progressive rendering** — instant low-resolution preview, asynchronous refinement to full quality
-- **Computation optimizations** — cardioid/bulb checks, periodicity detection, symmetry exploitation
-- **Multiple color palettes** — smooth gradient coloring with instant palette switching
-- **Bookmarks** — save and restore exploration states, including all parameters and metadata
 - **High-resolution image export** — offscreen rendering at arbitrary resolution with optional supersampling
 - **Animation export** (post-v1.0) — bookmark-to-bookmark zoom animations with video output
+- **Deep zoom** — perturbation theory and arbitrary precision for zoom beyond 10^15
+- **Additional fractal types** — Multibrot, Burning Ship, Newton, etc.
 
 ## Technology Stack
 
 | Component | Crate |
 |---|---|
 | Language | Rust |
-| UI | `egui` / `eframe` |
+| UI | `egui` / `eframe`, `egui_material_icons` |
 | Parallelism | `rayon` |
 | Benchmarking | `criterion` |
 | Image encoding | `image` |
+| Base64 encoding | `base64` |
 | Serialization | `serde`, `serde_json` |
 | Config paths | `directories` |
+| File dialogs | `rfd` |
 | Logging | `tracing` |
 
 No GPU required. Performance is achieved through CPU parallelism and careful architecture.
+
+## Quick Start
+
+```bash
+# Build and run (requires Rust toolchain)
+cargo run -p mandelbrust-app
+
+# Run tests
+cargo test --workspace
+
+# Run benchmarks
+cargo bench -p mandelbrust-render
+```
 
 ## Project Structure
 

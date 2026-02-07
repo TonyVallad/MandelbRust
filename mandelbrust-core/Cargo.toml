@@ -1,0 +1,11 @@
+[package]
+name = "mandelbrust-core"
+description = "Core fractal math, iteration engine, and data types for MandelbRust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
