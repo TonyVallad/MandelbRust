@@ -67,6 +67,12 @@ Five built-in palettes with smooth coloring. The palette picker popup lets you p
 | Right-drag | Selection rectangle zoom |
 | Shift + Click | Set Julia constant (in Julia mode) |
 
+<p align="center">
+  <img src="docs/img/Screenshot_Zoom_using_drag.png" alt="Selection-box zoom via right-click drag" width="800">
+</p>
+
+Right-click and drag to draw a selection rectangle, then release to zoom into that region.
+
 ### Keyboard
 
 | Key | Action |
