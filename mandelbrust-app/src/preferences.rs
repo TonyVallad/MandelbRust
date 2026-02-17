@@ -71,6 +71,16 @@ pub struct AppPreferences {
     /// HUD panel background opacity 0.0..=1.0 (default 0.65). Excludes toolbar.
     #[serde(default = "default_hud_panel_opacity")]
     pub hud_panel_opacity: f32,
+
+    // Phase 10: Julia C Explorer (cols/rows derived from viewport to fill it)
+    #[serde(default = "default_julia_explorer_max_iterations")]
+    pub julia_explorer_max_iterations: u32,
+    /// C extent half: grid shows [-0.75-L, -0.75+L]×[-L,L] in C. Smaller = zoom in.
+    #[serde(default = "default_julia_explorer_extent_half")]
+    pub julia_explorer_extent_half: f64,
+    /// Side length of each grid cell in pixels (cols/rows = viewport / this).
+    #[serde(default = "default_julia_explorer_cell_size_px")]
+    pub julia_explorer_cell_size_px: u32,
 }
 
 /// Minimap widget size (side length in pixels).
@@ -120,6 +130,15 @@ fn default_crosshair_opacity() -> f32 {
 fn default_hud_panel_opacity() -> f32 {
     0.65
 }
+fn default_julia_explorer_max_iterations() -> u32 {
+    200
+}
+fn default_julia_explorer_extent_half() -> f64 {
+    2.0
+}
+fn default_julia_explorer_cell_size_px() -> u32 {
+    64
+}
 
 impl Default for AppPreferences {
     fn default() -> Self {
@@ -139,6 +158,9 @@ impl Default for AppPreferences {
             minimap_opacity: default_minimap_opacity(),
             crosshair_opacity: default_crosshair_opacity(),
             hud_panel_opacity: default_hud_panel_opacity(),
+            julia_explorer_max_iterations: default_julia_explorer_max_iterations(),
+            julia_explorer_extent_half: default_julia_explorer_extent_half(),
+            julia_explorer_cell_size_px: default_julia_explorer_cell_size_px(),
         }
     }
 }
@@ -150,8 +172,13 @@ impl AppPreferences {
         if path.exists() {
             match fs::read_to_string(&path) {
                 Ok(json) => match serde_json::from_str::<AppPreferences>(&json) {
-                    Ok(prefs) => {
+                    Ok(mut prefs) => {
                         info!("Loaded preferences from {}", path.display());
+                        // One-time migration: widen C explorer extent if it was the old narrow default.
+                        if prefs.julia_explorer_extent_half < 1.5 {
+                            prefs.julia_explorer_extent_half = 2.0;
+                            prefs.save();
+                        }
                         return prefs;
                     }
                     Err(e) => {

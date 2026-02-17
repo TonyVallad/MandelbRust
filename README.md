@@ -11,12 +11,12 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 
 ## Status
 
-**Active development** — Phases 0–7 complete. The core explorer is fully functional with real-time rendering, multiple color palettes, adaptive anti-aliasing, a persistent bookmark system, and an optimized release profile (LTO, parallel colorization, cached hot-loop values).
+**Active development** — Phases 0–10 complete. The core explorer is fully functional with real-time rendering, multiple color palettes, adaptive anti-aliasing, a persistent bookmark system, and an optimized release profile (LTO, parallel colorization, cached hot-loop values).
 
 ## Current Features
 
 - **Real-time exploration** — smooth pan and zoom with mouse, keyboard, and Google Maps-style controls
-- **Mandelbrot & Julia sets** — switch modes via the fractal parameters panel; Shift+Click to pick Julia constant
+- **Mandelbrot & Julia sets** — switch modes via the fractal parameters panel; **J** opens the Julia C Explorer (grid of previews; click a cell to set the Julia constant) or Shift+Click on the main view to pick from cursor
 - **Multithreaded tiled renderer** — parallel CPU rendering via Rayon with automatic load balancing
 - **Progressive rendering** — instant low-resolution preview on a background thread, asynchronous refinement to full quality
 - **Computation optimizations** — cardioid/bulb checks, periodicity detection (Brent's), real-axis symmetry, border tracing
@@ -96,6 +96,7 @@ Right-click and drag to draw a selection rectangle, then release to zoom into th
 | `S` | Save / update bookmark |
 | `B` | Toggle bookmark explorer |
 | `M` | Toggle minimap |
+| `J` | Julia C Explorer (grid of Julia previews; click to set c) |
 | `Backspace` | View history back |
 | `Shift+Backspace` | View history forward |
 | `Escape` | Close dialogs / help / settings, cancel render |

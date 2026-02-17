@@ -1,8 +1,8 @@
 # MandelbRust — Development Roadmap v2
 
-Phases 0–7 are complete. This roadmap covers everything from Phase 8 onward.
+Phases 0–10 are complete. This roadmap covers everything from Phase 11 onward.
 
-**Next development focus:** Phases 8–10 implement the planned features from **`Features_to_add.md`** (Display/color settings and profiles, Minimap, Julia C Explorer). Each phase is written so an AI agent can execute the tasks in order without ambiguity. Full behaviour and edge cases are specified in `Features_to_add.md`; the roadmap breaks implementation into digestible steps.
+**Next development focus:** Phase 11 (Image Export) and beyond. Each phase is written so an AI agent can execute the tasks in order without ambiguity. Full behaviour and edge cases are specified in `Features_to_add.md`; the roadmap breaks implementation into digestible steps.
 
 Each phase is a self-contained unit of work that produces a testable, working state.
 
@@ -298,7 +298,7 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 
 **Files:** `mandelbrust-app` (new UI state and screen for “Julia C explorer”), `mandelbrust-render` (render many small Julia images)
 
-1. **Trigger:** When the user presses **C** in Julia mode (or uses the existing “set C” action), open the **Julia C Explorer** instead of (or in addition to) picking C from the cursor. Decide UX: either C always opens the grid, or a modifier/key switches between “cursor pick” and “grid explorer”. Per Features_to_add.md, C opens the grid.
+1. **Trigger:** When the user presses **J** in Julia mode (or uses the existing “set C” action), open the **Julia C Explorer** instead of (or in addition to) picking C from the cursor. Decide UX: either J always opens the grid, or a modifier/key switches between “cursor pick” and “grid explorer”. Per Features_to_add.md, J opens the grid.
 2. **Grid:** Display a grid of **square** images. Each cell = one Julia set with a fixed C. Map grid cell index `(i, j)` to complex C: the viewport for the grid is a fixed complex rectangle; default **−2 to 2** on both axes. So cell `(i, j)` corresponds to C = (re, im) where re and im are linearly mapped from cell indices. Number of rows/columns is **configurable** (e.g. from settings or in-explorer control); e.g. 12×16 or 14×16.
 3. **Per-cell render:** Each cell is a small **square** image (e.g. 64×64 or 80×80). For that cell, set Julia constant C from the cell’s position in the grid; render the Julia set with **coordinate range −2..2** (or the configurable range) in the complex plane. Use the current display/color settings (from `DisplayColorSettings`) and a **max iteration** default of **100** (configurable from settings). Render cells in the background (parallel or batched) so the grid fills in progressively.
 4. **Coordinate range:** Allow the user to change the “zoom” of **all** cells from within the explorer (e.g. “Range: −2..2” default; change to −1..1 for a zoomed-in grid). This affects the mapping from cell index to C.
@@ -332,10 +332,10 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 
 ### Deliverables — Phase 10
 
-- [ ] C key (Julia mode) opens grid of small Julia previews; each cell is a square; coordinate range −2..2 default, configurable in explorer
-- [ ] Click cell to set C and close explorer; hover shows C coordinates; display/color settings changeable from explorer and apply to grid and session
-- [ ] Grid size and default iterations (100) configurable in settings
-- [ ] Behaviour matches Features_to_add.md §2
+- [x] J key (Julia mode) opens grid of small Julia previews; each cell is a square; coordinate range −2..2 default, configurable in explorer
+- [x] Click cell to set C and close explorer; hover shows C coordinates; display/color settings changeable from explorer and apply to grid and session
+- [x] Grid size and default iterations (100) configurable in settings
+- [x] Behaviour matches Features_to_add.md §2
 
 ---
 

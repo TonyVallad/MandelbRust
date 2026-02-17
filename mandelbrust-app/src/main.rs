@@ -133,6 +133,20 @@ enum RenderResponse {
     Final { id: u64, result: RenderResult },
 }
 
+/// Phase 10: request for the Julia C Explorer grid worker.
+/// Grid shows C in [-0.75-extent_half, -0.75+extent_half]×[-extent_half, extent_half]; square grid (1:1 aspect) centered in viewport.
+struct JuliaGridRequest {
+    cols: u32,
+    rows: u32,
+    center_re: f64,
+    center_im: f64,
+    extent_half: f64,
+    cell_size: u32,
+    max_iterations: u32,
+    aa_level: u32,
+    cancel: Arc<RenderCancel>,
+}
+
 // ---------------------------------------------------------------------------
 // Application
 // ---------------------------------------------------------------------------
@@ -239,19 +253,50 @@ struct MandelbRustApp {
     minimap_revision: u64,
     /// Set from display/color panel when palette is changed in a context that borrows self; cleared in update().
     pending_minimap_bump: bool,
+
+    // Phase 10: Julia C Explorer
+    show_julia_c_explorer: bool,
+    /// C extent half (grid shows ± this in re/im around center). Smaller = zoom in.
+    julia_explorer_extent_half: f64,
+    /// Cols×rows of the current grid (derived from viewport to fill it).
+    julia_explorer_cols: u32,
+    julia_explorer_rows: u32,
+    /// Per-cell iteration data; keys (row, col).
+    julia_explorer_cells: HashMap<(u32, u32), IterationBuffer>,
+    /// Per-cell textures (derived from cells + current color settings).
+    julia_explorer_textures: HashMap<(u32, u32), egui::TextureHandle>,
+    /// When true, recolorize all cells and refresh textures (e.g. after display_color change).
+    julia_explorer_recolorize: bool,
+    /// Defer grid restart to next frame (avoids clearing textures while drawing).
+    julia_explorer_restart_pending: bool,
+    /// Set when user clicks a cell in the explorer; applied after the panel is drawn.
+    julia_explorer_picked_c: Option<(f64, f64)>,
+    tx_julia_grid_req: mpsc::Sender<JuliaGridRequest>,
+    rx_julia_grid_resp: mpsc::Receiver<(u32, u32, RenderResult)>,
+    grid_cancel: Arc<RenderCancel>,
 }
 
 impl MandelbRustApp {
     fn new(egui_ctx: &egui::Context, prefs: AppPreferences) -> Self {
+        let julia_explorer_extent_half = prefs.julia_explorer_extent_half;
         let (tx_req, rx_req) = mpsc::channel();
         let (tx_resp, rx_resp) = mpsc::channel();
         let cancel = Arc::new(RenderCancel::new());
+
+        let (tx_julia_grid_req, rx_julia_grid_req) = mpsc::channel();
+        let (tx_julia_grid_resp, rx_julia_grid_resp) = mpsc::channel();
+        let grid_cancel = Arc::new(RenderCancel::new());
 
         // Spawn the background render worker.
         let ctx = egui_ctx.clone();
         let cancel_clone = cancel.clone();
         thread::spawn(move || {
             render_worker(ctx, rx_req, tx_resp, cancel_clone);
+        });
+
+        // Phase 10: Julia C Explorer grid worker.
+        thread::spawn(move || {
+            julia_grid_worker(rx_julia_grid_req, tx_julia_grid_resp);
         });
 
         let w = prefs.window_width as u32;
@@ -387,6 +432,19 @@ impl MandelbRustApp {
             minimap_loading: false,
             minimap_revision: 0,
             pending_minimap_bump: false,
+
+            show_julia_c_explorer: false,
+            julia_explorer_extent_half,
+            julia_explorer_cols: 0,
+            julia_explorer_rows: 0,
+            julia_explorer_cells: HashMap::new(),
+            julia_explorer_textures: HashMap::new(),
+            julia_explorer_recolorize: false,
+            julia_explorer_restart_pending: false,
+            julia_explorer_picked_c: None,
+            tx_julia_grid_req: tx_julia_grid_req,
+            rx_julia_grid_resp: rx_julia_grid_resp,
+            grid_cancel,
         };
         color_profiles::ensure_default_profile();
         app
@@ -971,6 +1029,31 @@ impl MandelbRustApp {
         self.render_phase = RenderPhase::Rendering;
     }
 
+    /// Phase 10: Process incoming Julia grid cell results; colorize and cache texture.
+    fn poll_julia_grid_responses(&mut self, ctx: &egui::Context) {
+        while let Ok((i, j, result)) = self.rx_julia_grid_resp.try_recv() {
+            if result.cancelled {
+                continue;
+            }
+            self.julia_explorer_cells
+                .insert((i, j), result.iterations.clone());
+            let mut params = self.color_params();
+            params.cycle_length = self.display_color.cycle_length(result.iterations.max_iterations);
+            let buffer = if let Some(aa) = result.aa_samples.as_ref() {
+                self.current_palette().colorize_aa(&result.iterations, aa, &params)
+            } else {
+                self.current_palette().colorize(&result.iterations, &params)
+            };
+            let image = egui::ColorImage::from_rgba_unmultiplied(
+                [buffer.width as usize, buffer.height as usize],
+                &buffer.pixels,
+            );
+            let name = format!("julia_cell_{}_{}", i, j);
+            let tex = ctx.load_texture(name, image, egui::TextureOptions::LINEAR);
+            self.julia_explorer_textures.insert((i, j), tex);
+        }
+    }
+
     fn poll_responses(&mut self, ctx: &egui::Context) {
         while let Ok(resp) = self.rx_response.try_recv() {
             match resp {
@@ -1040,6 +1123,33 @@ impl MandelbRustApp {
             self.render_phase = RenderPhase::Done;
             info!("Render cancelled by user");
         }
+    }
+
+    /// Phase 10: Start (or restart) the Julia C Explorer grid render.
+    /// Uses julia_explorer_cols/rows (from viewport) and extent_half for C range.
+    fn start_julia_grid_request(&mut self) {
+        const JULIA_EXPLORER_CENTER_RE: f64 = -0.75;
+        const JULIA_EXPLORER_CENTER_IM: f64 = 0.0;
+        let cols = self.julia_explorer_cols.max(1);
+        let rows = self.julia_explorer_rows.max(1);
+        let cell_size_px = self.preferences.julia_explorer_cell_size_px.clamp(16, 256);
+        self.julia_explorer_cells.clear();
+        self.julia_explorer_textures.clear();
+        self.grid_cancel.cancel();
+        let new_cancel = Arc::new(RenderCancel::new());
+        self.grid_cancel = new_cancel.clone();
+        let req = JuliaGridRequest {
+            cols,
+            rows,
+            center_re: JULIA_EXPLORER_CENTER_RE,
+            center_im: JULIA_EXPLORER_CENTER_IM,
+            extent_half: self.julia_explorer_extent_half,
+            cell_size: cell_size_px,
+            max_iterations: self.preferences.julia_explorer_max_iterations,
+            aa_level: 4,
+            cancel: new_cancel,
+        };
+        let _ = self.tx_julia_grid_req.send(req);
     }
 
     fn check_resize(&mut self, width: u32, height: u32) {
@@ -1214,6 +1324,8 @@ impl MandelbRustApp {
                     self.show_update_or_save_dialog = false;
                 } else if self.show_save_dialog {
                     self.show_save_dialog = false;
+                } else if self.show_julia_c_explorer {
+                    self.show_julia_c_explorer = false;
                 } else if self.show_bookmarks {
                     self.show_bookmarks = false;
                 } else if self.show_help {
@@ -1269,19 +1381,20 @@ impl MandelbRustApp {
                 }
             }
 
-            // J: switch to Julia mode (or update Julia c) using cursor position
+            // J: open Julia C Explorer (Phase 10). Grid request is sent after first draw (cols/rows from viewport).
             if input.key_pressed(egui::Key::J) {
-                if let Some(c) = self.cursor_complex {
-                    self.julia_c = c;
-                    self.bump_minimap_revision();
-                }
                 let was_julia = self.mode == FractalMode::Julia;
                 self.mode = FractalMode::Julia;
                 if !was_julia {
+                    if let Some(c) = self.cursor_complex {
+                        self.julia_c = c;
+                        self.bump_minimap_revision();
+                    }
                     self.push_history();
                     self.viewport = self.default_viewport();
+                    self.needs_render = true;
                 }
-                self.needs_render = true;
+                self.show_julia_c_explorer = true;
             }
 
             // M: toggle minimap (Phase 9)
@@ -1323,6 +1436,9 @@ impl MandelbRustApp {
 
     fn show_hud(&mut self, ctx: &egui::Context) {
         if !self.show_hud {
+            return;
+        }
+        if self.show_julia_c_explorer {
             return;
         }
 
@@ -1880,6 +1996,7 @@ impl MandelbRustApp {
         }
         if palette_changed {
             self.recolorize(ctx);
+            self.julia_explorer_recolorize = true;
         }
     }
 
@@ -2016,6 +2133,42 @@ impl MandelbRustApp {
                 {
                     self.preferences.save();
                 }
+                ui.add_space(10.0);
+                ui.heading("Julia C Explorer");
+                ui.label("Square grid (1:1 C aspect), centered in viewport.");
+                if ui
+                    .add(egui::Slider::new(&mut self.preferences.julia_explorer_max_iterations, 50..=500)
+                        .text("Grid preview iterations (default 100)"))
+                    .changed()
+                {
+                    self.preferences.save();
+                }
+                if ui
+                    .add(
+                        egui::Slider::new(&mut self.preferences.julia_explorer_extent_half, 0.05..=4.0)
+                            .logarithmic(true)
+                            .text("C extent (zoom)"),
+                    )
+                    .changed()
+                {
+                    self.preferences.save();
+                    self.julia_explorer_extent_half = self.preferences.julia_explorer_extent_half;
+                    self.julia_explorer_restart_pending = true;
+                }
+                ui.horizontal(|ui| {
+                    ui.label("Square size (px):");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut self.preferences.julia_explorer_cell_size_px)
+                                .range(16..=256)
+                                .suffix(""),
+                        )
+                        .changed()
+                    {
+                        self.preferences.save();
+                        self.julia_explorer_restart_pending = true;
+                    }
+                });
             });
 
         if !open {
@@ -2054,6 +2207,7 @@ impl MandelbRustApp {
                             ("M", "Toggle minimap"),
                             ("S", "Save bookmark"),
                             ("B", "Bookmark explorer"),
+                            ("J", "Julia C Explorer (pick c from grid)"),
                             ("C", "Toggle crosshair"),
                             ("A", "Cycle anti-aliasing (Off / 2x2 / 4x4)"),
                             ("R", "Reset view"),
@@ -2566,6 +2720,149 @@ impl MandelbRustApp {
         }
     }
 
+    // -- Julia C Explorer (Phase 10): drawn in central panel, no popup --------
+
+    /// Draw the Julia C Explorer in the central panel (main view). Cells touch with no spacing.
+    fn draw_julia_c_explorer_in_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let cell_size_px = self.preferences.julia_explorer_cell_size_px.clamp(16, 256) as f32;
+
+        // Recolorize all grid cells when display/color changed.
+        if self.julia_explorer_recolorize {
+            self.julia_explorer_recolorize = false;
+            let mut params = self.color_params();
+            for ((i, j), buf) in &self.julia_explorer_cells {
+                params.cycle_length =
+                    self.display_color.cycle_length(buf.max_iterations);
+                let buffer = self.current_palette().colorize(buf, &params);
+                let image = egui::ColorImage::from_rgba_unmultiplied(
+                    [buffer.width as usize, buffer.height as usize],
+                    &buffer.pixels,
+                );
+                let name = format!("julia_cell_{}_{}", i, j);
+                let tex = ctx.load_texture(name, image, egui::TextureOptions::LINEAR);
+                self.julia_explorer_textures.insert((*i, *j), tex);
+            }
+        }
+
+        // Update panel size when explorer is shown (so resize is tracked).
+        let available0 = ui.available_size();
+        self.check_resize(available0.x.max(1.0) as u32, available0.y.max(1.0) as u32);
+
+        const CENTER_RE: f64 = -0.75;
+        const CENTER_IM: f64 = 0.0;
+        let extent_half = self.julia_explorer_extent_half;
+
+        ui.style_mut().visuals.override_text_color =
+            Some(egui::Color32::from_rgb(220, 220, 220));
+
+        // Toolbar: square size (px), C extent (zoom), Display/color, hint.
+        ui.horizontal(|ui| {
+            ui.label("Square size (px):");
+            let mut px_val = self.preferences.julia_explorer_cell_size_px as i32;
+            if ui
+                .add(egui::DragValue::new(&mut px_val).range(16..=256))
+                .changed()
+            {
+                let v = px_val.clamp(16, 256) as u32;
+                self.preferences.julia_explorer_cell_size_px = v;
+                self.preferences.save();
+                self.julia_explorer_restart_pending = true;
+            }
+            ui.label("C extent (zoom):");
+            let mut ext_val = extent_half;
+            if ui
+                .add(
+                    egui::Slider::new(&mut ext_val, 0.05..=4.0)
+                        .logarithmic(true)
+                        .text(""),
+                )
+                .changed()
+                && ext_val > 0.0
+            {
+                self.julia_explorer_extent_half = ext_val;
+                self.preferences.julia_explorer_extent_half = ext_val;
+                self.preferences.save();
+                self.julia_explorer_restart_pending = true;
+            }
+        });
+        ui.horizontal(|ui| {
+            if ui.button("Display / color…").clicked() {
+                self.show_palette_popup = true;
+            }
+            ui.weak("Center (-0.75, 0). Smaller C extent = zoom in. Click cell to set c. Esc to close.");
+        });
+
+        // Square grid (N×N) so C plane has 1:1 aspect ratio; centered in available space.
+        let available = ui.available_size();
+        let cols_cap = (available.x / cell_size_px).floor() as u32;
+        let rows_cap = (available.y / cell_size_px).floor() as u32;
+        let n = cols_cap.min(rows_cap).max(1);
+        let cols = n;
+        let rows = n;
+        if cols != self.julia_explorer_cols || rows != self.julia_explorer_rows {
+            self.julia_explorer_cols = cols;
+            self.julia_explorer_rows = rows;
+            self.julia_explorer_restart_pending = true;
+        }
+        let center_j = (cols - 1) / 2;
+        let center_i = (rows - 1) / 2;
+        let cell_width = 2.0 * extent_half / n as f64;
+        let cell_width_re = cell_width;
+        let cell_width_im = cell_width;
+
+        let side = n as f32 * cell_size_px;
+        ui.add_space((available.y - side) / 2.0);
+        ui.horizontal(|ui| {
+            ui.add_space((available.x - side) / 2.0);
+            let (grid_rect, _) = ui.allocate_exact_size(
+                egui::vec2(side, side),
+                egui::Sense::hover(),
+            );
+            for i in 0..rows {
+                for j in 0..cols {
+                    let j_off = j as i64 - center_j as i64;
+                    let i_off = i as i64 - center_i as i64;
+                    let c_re = CENTER_RE + j_off as f64 * cell_width_re;
+                    let c_im = CENTER_IM - i_off as f64 * cell_width_im;
+                    let cell_rect = egui::Rect::from_min_size(
+                        egui::pos2(
+                            grid_rect.min.x + j as f32 * cell_size_px,
+                            grid_rect.min.y + i as f32 * cell_size_px,
+                        ),
+                        egui::vec2(cell_size_px, cell_size_px),
+                    );
+                    let inner = ui.scope_builder(egui::UiBuilder::new().max_rect(cell_rect), |ui| {
+                        ui.allocate_exact_size(egui::vec2(cell_size_px, cell_size_px), egui::Sense::click())
+                    });
+                    let resp = inner.inner.1;
+                    if resp.clicked() {
+                        self.julia_explorer_picked_c = Some((c_re, c_im));
+                    }
+                    resp.on_hover_text(format!("C = {:.6} {:+.6}i", c_re, c_im));
+                    let rect = inner.response.rect;
+                    if let Some(tex) = self.julia_explorer_textures.get(&(i, j)) {
+                        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                        ui.painter().image(tex.id(), rect, uv, egui::Color32::WHITE);
+                    } else {
+                        ui.painter().rect_filled(rect, 0.0, egui::Color32::from_gray(50));
+                        ui.painter().text(
+                            rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "…",
+                            egui::FontId::proportional(14.0),
+                            egui::Color32::GRAY,
+                        );
+                    }
+                }
+            }
+        });
+        ui.add_space((available.y - side) / 2.0);
+    }
+
+    fn show_julia_c_explorer_window(&mut self, _ctx: &egui::Context) {
+        // Julia C Explorer is now drawn in the central panel; no popup window.
+    }
+
     /// Draw a grid of bookmark cards for a list of indices.
     #[allow(clippy::too_many_arguments)]
     fn draw_bookmark_grid(
@@ -2772,15 +3069,24 @@ impl eframe::App for MandelbRustApp {
         }
         // Poll for background render results.
         self.poll_responses(ctx);
+        self.poll_julia_grid_responses(ctx);
+        if self.julia_explorer_restart_pending {
+            self.julia_explorer_restart_pending = false;
+            self.start_julia_grid_request();
+        }
         self.poll_minimap_response(ctx);
-        if self.show_hud && self.preferences.show_minimap {
+        if self.show_hud && !self.show_julia_c_explorer && self.preferences.show_minimap {
             self.request_minimap_if_invalid(ctx);
         }
 
-        // Central panel: fractal canvas.
+        // Central panel: fractal canvas or Julia C Explorer grid.
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ctx, |ui| {
+                if self.show_julia_c_explorer {
+                    self.draw_julia_c_explorer_in_panel(ui, ctx);
+                    return;
+                }
                 let available = ui.available_size();
                 let width = available.x.max(1.0) as u32;
                 let height = available.y.max(1.0) as u32;
@@ -2908,6 +3214,14 @@ impl eframe::App for MandelbRustApp {
                 self.handle_canvas_input(ctx, &response);
             });
 
+        // Apply Julia C pick from explorer (after panel is drawn).
+        if let Some((c_re, c_im)) = self.julia_explorer_picked_c.take() {
+            self.julia_c = Complex::new(c_re, c_im);
+            self.bump_minimap_revision();
+            self.needs_render = true;
+            self.show_julia_c_explorer = false;
+        }
+
         // Handle keyboard input (global).
         self.handle_keyboard(ctx);
 
@@ -2916,6 +3230,7 @@ impl eframe::App for MandelbRustApp {
         self.show_controls_panel(ctx);
         self.show_help_window(ctx);
         self.show_bookmark_window(ctx);
+        self.show_julia_c_explorer_window(ctx);
         self.show_update_or_save_choice(ctx);
         self.show_save_bookmark_dialog(ctx);
 
@@ -2925,6 +3240,7 @@ impl eframe::App for MandelbRustApp {
             || self.render_phase == RenderPhase::Refining
             || self.show_crosshair
             || self.zoom_rect_start.is_some()
+            || self.show_julia_c_explorer
         {
             ctx.request_repaint();
         }
@@ -3057,6 +3373,54 @@ fn render_worker(
             ctx.request_repaint();
 
             break; // Done with this request.
+        }
+    }
+}
+
+/// Phase 10: Renders a grid of small Julia set previews. Center cell is at (center_re, center_im);
+/// other cells go out from there by cell_width per step.
+fn julia_grid_worker(
+    rx: mpsc::Receiver<JuliaGridRequest>,
+    tx: mpsc::Sender<(u32, u32, RenderResult)>,
+) {
+    while let Ok(req) = rx.recv() {
+        let gen = req.cancel.generation();
+        let params = FractalParams::new(req.max_iterations, 2.0).unwrap_or_default();
+        // Each cell shows Julia set in z-plane −1.5..1.5 so the set fills the cell (reduces "empty" uniform cells).
+        let scale = 3.0 / req.cell_size as f64;
+        let viewport = match Viewport::new(
+            Complex::new(0.0, 0.0),
+            scale,
+            req.cell_size,
+            req.cell_size,
+        ) {
+            Ok(vp) => vp,
+            Err(_) => continue,
+        };
+        let center_j = (req.cols - 1) / 2;
+        let center_i = (req.rows - 1) / 2;
+        let cell_width_re = 2.0 * req.extent_half / req.cols as f64;
+        let cell_width_im = 2.0 * req.extent_half / req.rows as f64;
+
+        for i in 0..req.rows {
+            if req.cancel.generation() != gen {
+                break;
+            }
+            for j in 0..req.cols {
+                if req.cancel.generation() != gen {
+                    break;
+                }
+                let j_off = j as i64 - center_j as i64;
+                let i_off = i as i64 - center_i as i64;
+                let c_re = req.center_re + j_off as f64 * cell_width_re;
+                let c_im = req.center_im - i_off as f64 * cell_width_im;
+                let c = Complex::new(c_re, c_im);
+                let julia = Julia::new(c, params);
+                let result = do_render(&julia, &viewport, &req.cancel, req.aa_level, false);
+                if tx.send((i, j, result)).is_err() {
+                    return;
+                }
+            }
         }
     }
 }
