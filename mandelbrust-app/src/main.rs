@@ -258,7 +258,7 @@ impl MandelbRustApp {
         let h = prefs.window_height as u32;
 
         // Restore last view if configured, otherwise use defaults.
-        let (mode, julia_c, params, viewport, display_color, aa_level) = if prefs.restore_last_view
+        let (mode, julia_c, params, viewport, mut display_color, aa_level) = if prefs.restore_last_view
         {
             if let Some(ref lv) = prefs.last_view {
                 let m = match lv.mode.as_str() {
@@ -294,6 +294,15 @@ impl MandelbRustApp {
             defaults_for(w, h, &prefs)
         };
 
+        // Restore full display/color settings from last session so palette mode, start-from, etc. persist.
+        if let Some(ref saved) = prefs.last_display_color {
+            display_color = saved.clone();
+        }
+        let palettes = builtin_palettes();
+        if display_color.palette_index >= palettes.len() {
+            display_color.palette_index = 0;
+        }
+
         let mut bookmark_store = BookmarkStore::load(&prefs.bookmarks_dir);
         bookmark_store.sort_by_date(); // Default: newest first.
         let bookmarks_dir_display = bookmark_store.directory().to_string_lossy().to_string();
@@ -320,7 +329,7 @@ impl MandelbRustApp {
             tiles_mirrored: 0,
             tiles_border_traced: 0,
 
-            palettes: builtin_palettes(),
+            palettes,
             display_color,
             current_iterations: None,
 
@@ -770,6 +779,8 @@ impl MandelbRustApp {
     fn show_minimap_panel(&mut self, ctx: &egui::Context, hud_alpha: u8) {
         let size = self.preferences.minimap_size.side_pixels() as f32;
         let vp = self.minimap_viewport();
+        let minimap_alpha = (hud_alpha as f32 * self.preferences.minimap_opacity.clamp(0.0, 1.0)).round() as u8;
+        let image_alpha = (255.0 * self.preferences.minimap_opacity.clamp(0.0, 1.0)).round() as u8;
 
         // Same margin from viewport edges as other HUD panels. For RIGHT_BOTTOM, negative offset = inset from corner.
         const MINIMAP_ANCHOR_MARGIN: f32 = 8.0;
@@ -778,7 +789,7 @@ impl MandelbRustApp {
             .show(ctx, |ui| {
                 // No inner margin: white border is the outmost layer; no black band outside it.
                 egui::Frame::NONE
-                    .fill(egui::Color32::from_black_alpha(hud_alpha))
+                    .fill(egui::Color32::from_black_alpha(minimap_alpha))
                     .inner_margin(egui::Margin::ZERO)
                     .corner_radius(0.0)
                     .show(ui, |ui| {
@@ -809,7 +820,7 @@ impl MandelbRustApp {
                                 tex.id(),
                                 image_rect,
                                 uv,
-                                egui::Color32::WHITE,
+                                egui::Color32::from_white_alpha(image_alpha),
                             );
                         } else if self.minimap_loading {
                             ui.painter().text(
@@ -1360,8 +1371,9 @@ impl MandelbRustApp {
             });
 
         // -- Bottom-centre: render stats (Phase 9: moved from bottom-right for minimap) --
+        // Negative y: egui adds offset to anchor; bottom anchor is at screen bottom, so -y moves panel up.
         egui::Area::new(egui::Id::new("hud_render"))
-            .anchor(egui::Align2::CENTER_BOTTOM, [0.0, HUD_MARGIN])
+            .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -HUD_MARGIN])
             .show(ctx, |ui| {
                 egui::Frame::NONE
                     .fill(egui::Color32::from_black_alpha(hud_alpha))
@@ -1509,9 +1521,8 @@ impl MandelbRustApp {
                                     params_changed = true;
                                 }
                             }
-                            // Save bookmark
-                            let has_bookmark = self.last_jumped_bookmark_idx.is_some();
-                            if add_icon_btn(ui, mi_state(ICON_BOOKMARK_ADD, has_bookmark), true)
+                            // Save bookmark (always available; icon not greyed out)
+                            if add_icon_btn(ui, mi(ICON_BOOKMARK_ADD), true)
                                 .on_hover_text("Save bookmark (S)")
                                 .clicked()
                             {
@@ -1774,8 +1785,9 @@ impl MandelbRustApp {
         }
 
         // ---- Fractal parameters panel (bottom-left) ----
+        // Negative y: egui adds offset to anchor; bottom anchor is at screen bottom, so -y moves panel up.
         egui::Area::new(egui::Id::new("hud_fractal_params"))
-            .anchor(egui::Align2::LEFT_BOTTOM, [HUD_MARGIN, HUD_MARGIN])
+            .anchor(egui::Align2::LEFT_BOTTOM, [HUD_MARGIN, -HUD_MARGIN])
             .show(ctx, |ui| {
                 egui::Frame::NONE
                     .fill(egui::Color32::from_black_alpha(hud_alpha))
@@ -1939,12 +1951,6 @@ impl MandelbRustApp {
 
                 ui.add_space(10.0);
                 ui.heading("Minimap & HUD");
-                if ui
-                    .checkbox(&mut self.preferences.show_minimap, "Show minimap")
-                    .changed()
-                {
-                    self.preferences.save();
-                }
                 ui.horizontal(|ui| {
                     ui.label("Minimap size:");
                     egui::ComboBox::from_id_salt(egui::Id::new("minimap_size"))
@@ -1988,6 +1994,13 @@ impl MandelbRustApp {
                 {
                     self.preferences.save();
                     self.bump_minimap_revision();
+                }
+                if ui
+                    .add(egui::Slider::new(&mut self.preferences.minimap_opacity, 0.0..=1.0)
+                        .text("Minimap opacity"))
+                    .changed()
+                {
+                    self.preferences.save();
                 }
                 if ui
                     .add(egui::Slider::new(&mut self.preferences.crosshair_opacity, 0.0..=1.0)
@@ -2918,8 +2931,9 @@ impl eframe::App for MandelbRustApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        // Save last view and bookmarks on shutdown.
+        // Save last view, display/color settings, and bookmarks on shutdown.
         self.preferences.last_view = Some(self.capture_last_view());
+        self.preferences.last_display_color = Some(self.display_color.clone());
         self.preferences.save();
         self.bookmark_store.save();
         info!("Saved preferences and bookmarks on exit");

@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
 
+use crate::display_color::DisplayColorSettings;
+
 // ---------------------------------------------------------------------------
 // Last-view snapshot
 // ---------------------------------------------------------------------------
@@ -42,6 +44,9 @@ pub struct AppPreferences {
     pub restore_last_view: bool,
     #[serde(default)]
     pub last_view: Option<LastView>,
+    /// Full display/color settings from last session. Restored on startup so palette mode, start-from, etc. persist.
+    #[serde(default)]
+    pub last_display_color: Option<DisplayColorSettings>,
     /// Custom bookmarks directory. When empty, the default OS config path is used.
     #[serde(default)]
     pub bookmarks_dir: String,
@@ -57,6 +62,9 @@ pub struct AppPreferences {
     pub minimap_zoom_half_extent: f64,
     #[serde(default = "default_minimap_iterations")]
     pub minimap_iterations: u32,
+    /// Minimap panel opacity 0.0..=1.0 (default 0.75). Applied to background and image.
+    #[serde(default = "default_minimap_opacity")]
+    pub minimap_opacity: f32,
     /// Crosshair lines opacity 0.0..=1.0 (default 0.5).
     #[serde(default = "default_crosshair_opacity")]
     pub crosshair_opacity: f32,
@@ -69,8 +77,8 @@ pub struct AppPreferences {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MinimapSize {
-    Small,
     #[default]
+    Small,
     Medium,
     Large,
 }
@@ -103,6 +111,9 @@ fn default_minimap_zoom() -> f64 {
 fn default_minimap_iterations() -> u32 {
     500
 }
+fn default_minimap_opacity() -> f32 {
+    0.75
+}
 fn default_crosshair_opacity() -> f32 {
     0.5
 }
@@ -119,11 +130,13 @@ impl Default for AppPreferences {
             default_palette_index: 0,
             restore_last_view: true,
             last_view: None,
+            last_display_color: None,
             bookmarks_dir: String::new(),
             show_minimap: true,
             minimap_size: MinimapSize::default(),
             minimap_zoom_half_extent: default_minimap_zoom(),
             minimap_iterations: default_minimap_iterations(),
+            minimap_opacity: default_minimap_opacity(),
             crosshair_opacity: default_crosshair_opacity(),
             hud_panel_opacity: default_hud_panel_opacity(),
         }
