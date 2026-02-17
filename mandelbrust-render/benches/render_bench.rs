@@ -11,7 +11,7 @@ fn bench_full_frame_render(c: &mut Criterion) {
     let cancel = Arc::new(RenderCancel::new());
 
     c.bench_function("full_frame_640x480", |b| {
-        b.iter(|| render(&mandelbrot, &viewport, &cancel));
+        b.iter(|| render(&mandelbrot, &viewport, &cancel, true));
     });
 }
 
@@ -22,7 +22,7 @@ fn bench_iteration_throughput(c: &mut Criterion) {
     let cancel = Arc::new(RenderCancel::new());
 
     c.bench_function("render_256x256_1000iter", |b| {
-        b.iter(|| render(&mandelbrot, &viewport, &cancel));
+        b.iter(|| render(&mandelbrot, &viewport, &cancel, true));
     });
 }
 
@@ -30,7 +30,7 @@ fn bench_colorize(c: &mut Criterion) {
     let mandelbrot = Mandelbrot::default();
     let viewport = Viewport::default_mandelbrot(640, 480);
     let cancel = Arc::new(RenderCancel::new());
-    let result = render(&mandelbrot, &viewport, &cancel);
+    let result = render(&mandelbrot, &viewport, &cancel, true);
     let palette = Palette::default();
 
     c.bench_function("colorize_640x480", |b| {

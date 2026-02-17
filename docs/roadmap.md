@@ -1,6 +1,6 @@
 # MandelbRust — Development Roadmap
 
-> **Note:** This is the original roadmap covering Phases 0–6 (all complete). For Phase 7 onward, see [**roadmap-v2.md**](roadmap-v2.md).
+> **Note:** This is the original roadmap covering Phases 0–6 (all complete). For Phase 7 onward, see [**roadmap-v2.md**](roadmap-v2.md). Roadmap v2 includes Phase 7 (Quick Performance Wins, done), Phases 8–10 (Display/color settings and profiles, Minimap, Julia C Explorer from `Features_to_add.md`), then Image Export, Architecture Cleanup, and later phases through v1.0 and beyond.
 
 This document describes the **planned development phases** for MandelbRust, from initial scaffolding to a fully-featured high-performance fractal explorer.  
 Each phase produces a usable, testable state of the application.
@@ -11,6 +11,7 @@ Each phase produces a usable, testable state of the application.
 > - If a change would alter the project's vision, scope, or architectural decisions, the [overview.md](overview.md) document **must be updated first** — always ask for confirmation before doing so.
 > - When a smarter or more efficient approach is identified during implementation, **suggest it proactively** — even if it diverges from the overview. Trade-offs and alternative benefits are worth discussing; the user may choose to compromise if the advantages justify it.
 > - **Keep code as simple as possible** while respecting current Rust best practices. Prefer clarity over cleverness: small pure functions, minimal nesting, straightforward control flow. Only add abstraction when it eliminates real duplication or is required by the architecture.
+> - **Keep files from getting too long.** Split modules and extract logic into separate files when a file would otherwise grow large; prefer many focused files over a few very long ones (see [overview.md](overview.md) §2–3).
 
 ---
 

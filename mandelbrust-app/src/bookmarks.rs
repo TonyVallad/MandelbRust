@@ -6,6 +6,8 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
+use crate::display_color::DisplayColorSettings;
+
 // ---------------------------------------------------------------------------
 // Bookmark
 // ---------------------------------------------------------------------------
@@ -26,6 +28,9 @@ pub struct Bookmark {
     pub escape_radius: f64,
     pub palette_index: usize,
     pub smooth_coloring: bool,
+    /// Full display/color snapshot (Phase 8). When absent, infer from palette_index/smooth_coloring.
+    #[serde(default)]
+    pub display_color: Option<DisplayColorSettings>,
     pub aa_level: u32,
     pub julia_c_re: f64,
     pub julia_c_im: f64,

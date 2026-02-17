@@ -1,8 +1,10 @@
 # MandelbRust — Development Roadmap v2
 
-Phases 0–6 are complete. This roadmap covers everything from Phase 7 onward.
+Phases 0–7 are complete. This roadmap covers everything from Phase 8 onward.
 
-Each phase is a self-contained unit of work that produces a testable, working state. Tasks are written so an AI agent can execute them without ambiguity.
+**Next development focus:** Phases 8–10 implement the planned features from **`Features_to_add.md`** (Display/color settings and profiles, Minimap, Julia C Explorer). Each phase is written so an AI agent can execute the tasks in order without ambiguity. Full behaviour and edge cases are specified in `Features_to_add.md`; the roadmap breaks implementation into digestible steps.
+
+Each phase is a self-contained unit of work that produces a testable, working state.
 
 > **Rules for every phase**
 >
@@ -12,6 +14,7 @@ Each phase is a self-contained unit of work that produces a testable, working st
 > - Keep functions small and pure. Prefer early returns over nesting. Add type hints on public functions. Add docstrings only when behaviour is not obvious.
 > - Only modify files directly relevant to the task. Summarise multi-file changes and ask before implementing.
 > - Before adding a dependency, justify it and ask for approval.
+> - **Keep files from getting too long.** When a file would grow large, split it into smaller modules or extract logic into new files (e.g. separate UI panels, helpers, or submodules). Prefer many focused files over a few very long ones.
 
 ---
 
@@ -27,6 +30,8 @@ Each phase is a self-contained unit of work that produces a testable, working st
 | 5 | Coloring System & Display Options | Done |
 | 6 | Bookmarks System | Done |
 | 7 | Quick Performance Wins | Done |
+| 8 | Display/color settings model and profiles | Done |
+| 9 | Minimap | Done |
 
 ---
 
@@ -118,11 +123,227 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 
 ---
 
-## Phase 8 — Image Export
+## Phase 8 — Display/color settings model and profiles ✅
 
-**Objective:** Support high-quality still image exports independent of screen resolution.
+**Objective:** Introduce a single, serializable display/color settings model; replace the palette icon with a Display/color settings panel; add color profiles (one file per profile in `color_profiles/`); extend bookmarks to store the full display/color snapshot.
 
-### Task 8.1 — Offscreen renderer
+**Reference:** [Features_to_add.md](../Features_to_add.md) §3; [overview.md](overview.md) §9, §10, §13 (Planned features).
+
+### Task 8.1 — Define `DisplayColorSettings` and use it in app state ✅
+
+**Files:** new file `mandelbrust-app/src/display_color.rs` (or `mandelbrust-render` if the struct is used headlessly), `mandelbrust-app/src/main.rs`, `mandelbrust-app/src/preferences.rs`
+
+1. Define a struct `DisplayColorSettings` with `serde::Serialize` and `serde::Deserialize` containing:
+   - `palette_index: usize` (or palette id/name for built-in palettes)
+   - `palette_mode: PaletteMode` (enum: `ByCycles(u32)` = number of cycles, `ByCycleLength(u32)` = cycle length in iterations)
+   - `start_from: StartFrom` (enum: `None`, `Black`, `White`)
+   - `low_threshold_start: u32`, `low_threshold_end: u32` (only used when `start_from != None`)
+   - `smooth_coloring: bool` (log-log / continuous iteration toggle)
+   - Optional later: `fade_to_black`, etc.
+2. Implement `Default` for `DisplayColorSettings` (e.g. palette 0, one cycle, no start-from, smooth on).
+3. In the app state, replace the existing `palette_index` and `smooth_coloring` (and any other scattered display/color fields) with a single `display_color: DisplayColorSettings` field. Wire the UI and render path to read from `display_color`.
+4. Ensure the render pipeline (and any code that chooses palette or smooth flag) receives these settings (e.g. pass `&DisplayColorSettings` into the colorize path).
+
+**Verify:** `cargo test --workspace` passes. Application behaves as before: palette selection and smooth-coloring toggle still work, now backed by `DisplayColorSettings`.
+
+---
+
+### Task 8.2 — Extend coloring pipeline for cycle mode and start-from black/white ✅
+
+**Files:** `mandelbrust-render/src/palette.rs`, `mandelbrust-core` (if `IterationResult` is used)
+
+1. **Cycle mode:** When mapping iteration result to palette index, support:
+   - `ByCycles(n)`: effective cycle length = `max_iterations / n`; position in cycle = (smooth or raw) iteration modulo cycle length, normalized to `[0, 1)`.
+   - `ByCycleLength(len)`: position in cycle = iteration modulo `len`, normalized to `[0, 1)`.
+   The existing LUT sampling stays; only the mapping from iteration value to `t` (index into the gradient) changes. Add a parameter or config to `Palette::color()` / `colorize()` so the render crate can pass cycle mode and max_iterations.
+2. **Start-from black/white:** For iterations below `low_threshold_start`, output solid black (if StartFrom::Black) or solid white (if StartFrom::White). Between `low_threshold_start` and `low_threshold_end`, linearly blend from that solid color to the palette color. Above `low_threshold_end`, use only the palette (and existing interior = black). Add these parameters to the coloring path; they can live on `DisplayColorSettings` and be passed through.
+3. Keep the existing smooth iteration formula `ν = n + 1 − log₂(ln|zₙ|)`; the `smooth_coloring` flag only toggles whether to use it or raw integer count.
+
+**Verify:** Unit tests: (1) cycle mode changes repeat frequency of the palette; (2) start-from black/white produces solid band then gradient then normal palette. Manual check: changing cycles and thresholds in the UI updates the image without re-render (re-colorize only).
+
+---
+
+### Task 8.3 — Replace palette icon with Display/color settings panel ✅
+
+**Files:** `mandelbrust-app/src/main.rs` (or `ui/toolbar.rs`, `ui/palette_popup.rs` if split in Phase 12)
+
+1. Replace the current **palette** toolbar icon with a **Display/color settings** icon (choose a Material Symbol that suggests “palette + settings”, e.g. `palette` or `tune`; keep it in the same toolbar position).
+2. Clicking the icon opens a **panel** (floating window or side panel) instead of the current palette popup. The panel contains:
+   - **Palette:** dropdown or list of built-in palettes (same as current behaviour; selection updates `display_color.palette_index`).
+   - **Palette mode:** radio or dropdown “By number of cycles” / “By cycle length” plus a number input (cycles count or cycle length in iterations).
+   - **Start from:** None / Black / White; when not None, show numeric inputs for `low_threshold_start` and `low_threshold_end`.
+   - **Smooth coloring (log-log):** checkbox, same as current smooth toggle (writes to `display_color.smooth_coloring`).
+3. All edits apply immediately to the current session (re-colorize from current `IterationBuffer` where possible; no full re-render unless a future option requires it).
+4. Do **not** add profile load/save in this task (Task 8.4). The panel only edits the current `DisplayColorSettings`.
+
+**Verify:** User can change every display/color setting from the new panel. Toolbar no longer shows the old palette-only popup. Behaviour matches Features_to_add.md for the “Display/color settings icon and panel” bullet.
+
+---
+
+### Task 8.4 — Color profiles: one file per profile in `color_profiles/` ✅
+
+**Files:** `mandelbrust-app/src/display_color.rs`, new or existing module for profile I/O, `mandelbrust-app/src/main.rs`
+
+1. **Profile directory:** Resolve a `color_profiles` folder at the **program root** (directory of the executable, or workspace root in dev). Use `std::env::current_exe()` and strip the filename to get the directory, or use an existing app-base-path helper. Create the folder if it does not exist.
+2. **One file per profile:** Each profile is a JSON file (human-readable). Filename = profile name sanitized for the filesystem (e.g. replace invalid chars with `_`) + `.json`. Content = serialized `DisplayColorSettings` (and optionally a `name` field for display). No subfolders; flat list.
+3. **Panel integration:** In the Display/color settings panel, add:
+   - **Profile list:** List or dropdown of existing profiles (scan `color_profiles/` for `*.json`; display name = filename without `.json` or a `name` field inside the file).
+   - **Load:** Selecting a profile (or “Load” button) reads the file and applies the stored `DisplayColorSettings` to the current session.
+   - **Save:** “Save as profile” button: prompt for a name (or use “Default” if none), serialize current `DisplayColorSettings` to `color_profiles/{name}.json`. Overwrite if exists.
+4. Ensure at least one default profile exists on first run (e.g. create `Default.json` from current defaults if the folder is empty).
+
+**Verify:** Saving a profile creates a file in `color_profiles/`. Loading a profile applies its settings. Copying a profile file to another machine and loading it works (shareable profiles).
+
+---
+
+### Task 8.5 — Bookmarks store and restore full `DisplayColorSettings` ✅
+
+**Files:** `mandelbrust-app/src/bookmarks.rs`, `mandelbrust-app/src/main.rs`
+
+1. Extend the `Bookmark` struct to include a **full snapshot** of display/color settings: add a field `display_color: DisplayColorSettings` (or embed all fields that `DisplayColorSettings` contains). Remove or deprecate storing only a “profile name” for color; the bookmark must be self-contained.
+2. **On save bookmark:** Serialize the current `display_color` (from app state) into the bookmark file. Optionally also store `active_profile_name: Option<String>` for reference.
+3. **On load bookmark (jump to bookmark):** Apply the bookmark’s `display_color` to the app state (overwriting current display/color settings for the session). Re-colorize the view from the current `IterationBuffer`; no full re-render unless needed.
+4. **Backward compatibility:** When loading an old bookmark JSON that does not have `display_color`, use a default `DisplayColorSettings` (or infer from old `palette_index` / `smooth_coloring` if present).
+
+**Verify:** Save a bookmark with custom cycle count and start-from white; reopen app, load the bookmark; display/color state matches. No dependency on a profile file for bookmark restore.
+
+---
+
+### Deliverables — Phase 8
+
+- [x] `DisplayColorSettings` struct defined, serializable, used everywhere display/color is decided
+- [x] Coloring pipeline supports palette mode (by cycles / by cycle length) and start-from black/white with thresholds
+- [x] Palette icon replaced by Display/color settings icon; panel edits all display/color options
+- [x] `color_profiles/` folder; one JSON file per profile; load/save/list in panel
+- [x] Bookmarks contain and restore full `DisplayColorSettings` snapshot
+- [x] Overview and Features_to_add.md behaviour for §3 (Display and color settings) satisfied for these items
+
+---
+
+## Phase 9 — Minimap ✅
+
+**Objective:** Show a zoomed-out overview of the fractal with a viewport indicator; toggle with M key or toolbar icon; hide when HUD is off; size and styling configurable.
+
+**Reference:** [Features_to_add.md](../Features_to_add.md) §1.
+
+### Task 9.1 — Render and cache zoomed-out overview image ✅
+
+**Files:** `mandelbrust-app` (minimap state and render trigger), `mandelbrust-render` (optional helper for fixed-iteration render)
+
+1. **Minimap image:** Render a **square** image (aspect ratio **1:1**). The complex-plane range is **-2 to 2** on both axes by default; **zoom** (scale / range shown) is **configurable in the settings menu**. Use a **fixed max iteration count** (default **500**; configurable in settings). Resolution is square (e.g. 256×256) to match the 1:1 aspect ratio; size follows the minimap widget side length (small/medium/large).
+2. **Cache:** Store the resulting pixel buffer (and optionally the iteration buffer) in app state. **Invalidate** the cache whenever any parameter that would change the image changes: fractal mode, Julia C, max iterations for minimap, palette/display color settings, or any other setting that affects the zoomed-out look. Do not invalidate on viewport pan/zoom of the main view.
+3. Render the minimap image on a background thread (reuse the existing render channel or a one-off) so the UI stays responsive. When cache is invalid, show a placeholder (e.g. “Updating…” or previous frame) until the new minimap is ready.
+
+**Verify:** After changing Julia C or color settings, the minimap updates. After only panning/zooming the main view, the minimap does not re-render (cache hit).
+
+---
+
+### Task 9.2 — Draw minimap with viewport rectangle and crosshair ✅
+
+**Files:** `mandelbrust-app` (UI code that draws the minimap overlay)
+
+1. **Placement:** Draw the minimap in the **bottom-right corner** of the viewport. Use the **same margin** as the other HUD boxes (see Task 9.4). The minimap **aspect ratio is always square (1:1)** — it shows an equal complex-plane range on both axes (e.g. -2 to 2; zoom configurable in settings).
+2. **Viewport indicator:** Draw a **rectangle** in **cyan** on the minimap representing the current main viewport’s position and size in the complex plane (map main viewport bounds to minimap pixel coordinates).
+3. **Crosshair:** Draw a **white vertical line** and a **white horizontal line** through the **centre** of that rectangle. Lines extend to the **edges of the minimap** but not outside. **Opacity** of the crosshair lines: **50%** by default; the minimap panel uses the global HUD box opacity (65% default; Task 9.4). Crosshair line opacity is configurable in the settings menu (e.g. 0–100%).
+4. Draw the minimap so it does not obscure the centre of the view. Use egui’s layering or a dedicated panel.
+
+**Verify:** The minimap always appears square (1:1). The cyan rectangle moves when panning/zooming; the crosshair stays centered on it. Changing crosshair opacity in settings updates the line transparency.
+
+---
+
+### Task 9.3 — Toggle, visibility, and size settings ✅
+
+**Files:** `mandelbrust-app/src/main.rs`, settings/preferences
+
+1. **Toggle:** Pressing **M** key toggles minimap visibility. Add a **toolbar icon** (e.g. Material Symbol `map` or `crop_free`) that also toggles the minimap. State is persisted in preferences (e.g. `show_minimap: bool`).
+2. **HUD off:** When the user hides the HUD (e.g. **H** key), **hide the minimap** as well. When HUD is shown again, restore the minimap visibility from the saved state (so if it was on before HUD off, it is on again).
+3. **Size and zoom:** Add settings in the settings menu: **Minimap size** (Small, Medium, Large — side length in pixels, e.g. 128, 256, 384). **Minimap zoom** — complex-plane range shown (default -2 to 2; configurable so the user can zoom the minimap in or out). Persist both. Minimap stays **square (1:1)**.
+
+**Verify:** M and toolbar icon toggle minimap. Hiding HUD hides minimap; showing HUD restores minimap state. Changing minimap size in settings resizes the (square) minimap. Minimap zoom (-2..2 or custom range) and default iteration count (500) are configurable in settings.
+
+---
+
+### Task 9.4 — HUD layout and box styling (unify all boxes) ✅
+
+**Files:** `mandelbrust-app` (HUD layout and panel drawing code)
+
+1. **Move render stats to bottom-centre:** The box that is currently in the **bottom-right** (render stats: phase, timing, tile counts, AA status) must be **moved to the bottom centre** of the viewport. The **bottom-right** is reserved for the minimap (Task 9.2).
+2. **Margins:** All HUD boxes (top-left, bottom-left, bottom-centre render stats, bottom-right minimap) use the **same margins** as the two top elements (top-left panel and top-right toolbar area). Apply consistently so all boxes align to the same inset from the viewport edges.
+3. **Rounded corners:** All HUD boxes use **rounded corners** like the current top-left and bottom-left panels. Ensure top-left, bottom-left, bottom-centre, and minimap panel all share the same corner radius.
+4. **No border:** All HUD boxes have **no border** (same as the current bottom-left panel). **Exception:** the **top-right toolbar** stays exactly as it is — do not change its border or style.
+5. **Opacity:** All HUD boxes (viewport info, fractal parameters, render stats, minimap panel) use the **same background opacity**: **65% by default**, **configurable in the settings menu**. Add a single setting (e.g. “HUD panel opacity” or “Overlay opacity”) that controls all of them. The **toolbar is excluded** — it keeps its current appearance.
+6. Implement this so that when the minimap is added (Tasks 9.1–9.3), it automatically fits into this layout (bottom-right, same margin, rounded corners, no border, same opacity).
+
+**Verify:** Render stats appear in the bottom centre. All four box areas (top-left, bottom-left, bottom-centre, bottom-right when minimap on) have identical margins, rounded corners, no border, and the same configurable opacity (65% default). Toolbar looks unchanged.
+
+---
+
+### Deliverables — Phase 9
+
+- [x] Zoomed-out overview image rendered and cached; cache invalidated only when image-affecting params change
+- [x] Minimap drawn in **bottom-right** corner with cyan viewport rectangle and white crosshair (50% opacity default, configurable)
+- [x] Toggle via M key and toolbar icon; minimap hidden when HUD off; minimap square (1:1), range -2..2 default with zoom configurable; size (small/medium/large) and iteration count (500 default) configurable in settings
+- [x] HUD layout: render stats moved to **bottom-centre**; minimap in bottom-right; all boxes share same margins (as top boxes), rounded corners, no border, 65% opacity default (configurable in settings); toolbar unchanged
+- [x] Behaviour matches Features_to_add.md §1 and §1b
+
+---
+
+## Phase 10 — Julia C Explorer
+
+**Objective:** For Julia mode, replace “pick C from cursor” with a grid of small Julia set previews; clicking a cell sets the Julia constant. Support configurable grid size, coordinate range, and color settings in the explorer.
+
+**Reference:** [Features_to_add.md](../Features_to_add.md) §2.
+
+### Task 10.1 — Grid of small Julia previews (squares, −2..2 default)
+
+**Files:** `mandelbrust-app` (new UI state and screen for “Julia C explorer”), `mandelbrust-render` (render many small Julia images)
+
+1. **Trigger:** When the user presses **C** in Julia mode (or uses the existing “set C” action), open the **Julia C Explorer** instead of (or in addition to) picking C from the cursor. Decide UX: either C always opens the grid, or a modifier/key switches between “cursor pick” and “grid explorer”. Per Features_to_add.md, C opens the grid.
+2. **Grid:** Display a grid of **square** images. Each cell = one Julia set with a fixed C. Map grid cell index `(i, j)` to complex C: the viewport for the grid is a fixed complex rectangle; default **−2 to 2** on both axes. So cell `(i, j)` corresponds to C = (re, im) where re and im are linearly mapped from cell indices. Number of rows/columns is **configurable** (e.g. from settings or in-explorer control); e.g. 12×16 or 14×16.
+3. **Per-cell render:** Each cell is a small **square** image (e.g. 64×64 or 80×80). For that cell, set Julia constant C from the cell’s position in the grid; render the Julia set with **coordinate range −2..2** (or the configurable range) in the complex plane. Use the current display/color settings (from `DisplayColorSettings`) and a **max iteration** default of **100** (configurable from settings). Render cells in the background (parallel or batched) so the grid fills in progressively.
+4. **Coordinate range:** Allow the user to change the “zoom” of **all** cells from within the explorer (e.g. “Range: −2..2” default; change to −1..1 for a zoomed-in grid). This affects the mapping from cell index to C.
+
+**Verify:** Opening Julia C Explorer shows a grid of square Julia previews. Each preview is correct for its C. Changing the range updates all cells. Grid size (number of cells) is configurable.
+
+---
+
+### Task 10.2 — Click to set C; hover shows coordinates; color settings in explorer
+
+**Files:** `mandelbrust-app` (Julia C Explorer UI)
+
+1. **Click:** Clicking a cell sets the **Julia constant C** to that cell’s (re, im) and **closes** the Julia C Explorer (or returns to the main view with the new C). Main view re-renders with the new C.
+2. **Hover:** When hovering over a cell, **display the C coordinates** (real and imaginary) for that cell (tooltip or overlay text).
+3. **Color settings:** From within the Julia C Explorer view, the user can **change display/color settings** (e.g. open the Display/color settings panel, or a minimal subset: palette, smooth, cycles). Previews in the grid **update** to reflect the new settings (re-colorize or re-render as needed). Changes apply to the current session so when the user closes the explorer, the main view uses the same settings.
+
+**Verify:** Clicking a cell sets C and closes explorer. Hover shows C. Changing palette or other display options in the explorer updates the grid previews and the main view after closing.
+
+---
+
+### Task 10.3 — Configurable grid size and default iterations
+
+**Files:** Settings (preferences), Julia C Explorer UI
+
+1. **Grid size:** The number of cells (e.g. 12×16, 14×16) is **configurable** (settings menu or in-explorer). Store in preferences.
+2. **Default max iterations for grid:** Default **100** for the small previews; **configurable from the settings menu**. Use this value when rendering the explorer grid (not the main view’s max iterations).
+
+**Verify:** Changing “Julia explorer grid size” and “Julia explorer max iterations” in settings affects the next time the user opens the Julia C Explorer.
+
+---
+
+### Deliverables — Phase 10
+
+- [ ] C key (Julia mode) opens grid of small Julia previews; each cell is a square; coordinate range −2..2 default, configurable in explorer
+- [ ] Click cell to set C and close explorer; hover shows C coordinates; display/color settings changeable from explorer and apply to grid and session
+- [ ] Grid size and default iterations (100) configurable in settings
+- [ ] Behaviour matches Features_to_add.md §2
+
+---
+
+## Phase 11 — Image Export
+
+**Objective:** Support high-quality still image exports independent of screen resolution. Export must use the current **DisplayColorSettings** (Phase 8) for coloring.
+
+### Task 11.1 — Offscreen renderer
 
 **File:** new function in `mandelbrust-render/src/renderer.rs`
 
@@ -139,7 +360,7 @@ This function must be usable without any UI dependencies — it lives in the `ma
 
 ---
 
-### Task 8.2 — PNG export utility
+### Task 11.2 — PNG export utility
 
 **File:** new function in `mandelbrust-render/src/lib.rs` or a new `export.rs` module
 
@@ -152,7 +373,7 @@ Create a function `export_png()` that:
 
 ---
 
-### Task 8.3 — Export UI in the app
+### Task 11.3 — Export UI in the app
 
 **File:** `mandelbrust-app/src/main.rs`
 
@@ -167,7 +388,7 @@ Add an export button and dialog:
 
 ---
 
-### Task 8.4 — Update documentation
+### Task 11.4 — Update documentation
 
 **Files:** `docs/overview.md`, `README.md`
 
@@ -179,9 +400,9 @@ Add an export button and dialog:
 
 ---
 
-### Deliverables — Phase 8
+### Deliverables — Phase 11
 
-- [ ] `render_offscreen()` function in the render crate (no UI dependency)
+- [ ] `render_offscreen()` function in the render crate (no UI dependency); uses DisplayColorSettings for coloring
 - [ ] `export_png()` utility function
 - [ ] Export dialog in the app with resolution, AA, and file picker
 - [ ] Non-blocking export with progress
@@ -190,13 +411,13 @@ Add an export button and dialog:
 
 ---
 
-## Phase 9 — Architecture Cleanup
+## Phase 12 — Architecture Cleanup
 
 **Objective:** Reduce complexity in `main.rs`, improve state management, and move I/O off the UI thread. This prepares the codebase for larger features (SIMD, GPU, perturbation).
 
 **Reference:** [optimization-report.md](optimization-report.md) sections 10, 11, 12.
 
-### Task 9.1 — Split `main.rs` into UI modules
+### Task 12.1 — Split `main.rs` into UI modules
 
 **Current state:** `main.rs` contains all UI logic (~2500+ lines). Split it into focused modules.
 
@@ -213,7 +434,7 @@ Create the following files under `mandelbrust-app/src/`:
 | `ui/bookmarks.rs` | Bookmark explorer, save/update dialogs | `show_bookmark_window()`, `show_save_dialog()`, `show_update_or_save_dialog()` |
 | `ui/settings.rs` | Settings panel | `show_controls_panel()` (renamed to `show_settings()`) |
 | `ui/help.rs` | Controls & shortcuts window | `show_help_window()` |
-| `ui/palette_popup.rs` | Palette picker popup | Palette popup logic |
+| `ui/palette_popup.rs` or `ui/display_color.rs` | Display/color settings panel (Phase 8) and/or palette picker | Display/color panel logic, palette popup if retained |
 | `input.rs` | `handle_keyboard()`, mouse input processing | All input handling |
 
 Rules:
@@ -225,13 +446,13 @@ Rules:
 
 ---
 
-### Task 9.2 — Consolidate UI panel state into enums
+### Task 12.2 — Consolidate UI panel state into enums
 
 **Files:** `mandelbrust-app/src/app.rs` (or wherever the struct lives after 9.1)
 
 Replace mutually exclusive boolean flags with an enum:
 
-1. Create `enum ActivePanel { None, Settings, Help, BookmarkExplorer, SaveDialog, UpdateOrSaveDialog, PalettePopup }`.
+1. Create `enum ActivePanel { None, Settings, Help, BookmarkExplorer, SaveDialog, UpdateOrSaveDialog, DisplayColorSettings, PalettePopup }` (include DisplayColorSettings from Phase 8).
 2. Replace `show_controls`, `show_help`, `show_bookmarks`, `show_save_dialog`, `show_update_or_save_dialog`, `show_palette_popup` with a single `active_panel: ActivePanel` field.
 3. Update all toggle logic: opening a panel sets `active_panel = X`, closing sets `active_panel = None`. Opening panel X while Y is open closes Y first.
 4. Independent display flags (`show_hud`, `show_crosshair`, `smooth_coloring`, `adaptive_iterations`) remain as booleans — group them into a `DisplaySettings` struct.
@@ -240,7 +461,7 @@ Replace mutually exclusive boolean flags with an enum:
 
 ---
 
-### Task 9.3 — Move file I/O off the UI thread
+### Task 12.3 — Move file I/O off the UI thread
 
 **Files:** `mandelbrust-app/src/bookmarks.rs`, new file `mandelbrust-app/src/io_worker.rs`
 
@@ -261,7 +482,7 @@ Create a dedicated I/O worker thread:
 
 ---
 
-### Task 9.4 — Stable bookmark IDs and LRU thumbnail cache
+### Task 12.4 — Stable bookmark IDs and LRU thumbnail cache
 
 **Files:** `mandelbrust-app/src/bookmarks.rs`, app state struct
 
@@ -276,10 +497,10 @@ Create a dedicated I/O worker thread:
 
 ---
 
-### Deliverables — Phase 9
+### Deliverables — Phase 12
 
 - [ ] `main.rs` is < 100 lines; all logic lives in focused modules
-- [ ] UI panel state uses an enum, not boolean flags
+- [ ] UI panel state uses an enum (including DisplayColorSettings panel), not boolean flags
 - [ ] All file I/O happens on a background thread
 - [ ] Bookmark IDs are stable strings, not positional indices
 - [ ] Thumbnail cache is bounded (LRU, max 64 entries)
@@ -287,13 +508,13 @@ Create a dedicated I/O worker thread:
 
 ---
 
-## Phase 10 — Memory Layout & Buffer Management
+## Phase 13 — Memory Layout & Buffer Management
 
 **Objective:** Reduce memory footprint and allocation pressure for faster rendering.
 
 **Reference:** [optimization-report.md](optimization-report.md) section 5.
 
-### Task 10.1 — Compact `IterationResult` to 8 bytes
+### Task 13.1 — Compact `IterationResult` to 8 bytes
 
 **File:** `mandelbrust-core/src/fractal.rs`, `mandelbrust-render/src/iteration_buffer.rs`, `mandelbrust-render/src/palette.rs`, `mandelbrust-render/src/aa.rs`
 
@@ -324,7 +545,7 @@ Update `class()` to return `iterations` directly (or `u32::MAX` for interior).
 
 ---
 
-### Task 10.2 — Buffer pool for tile rendering
+### Task 13.2 — Buffer pool for tile rendering
 
 **Files:** `mandelbrust-render/src/renderer.rs`
 
@@ -341,7 +562,7 @@ If a simpler approach is preferred: use Rayon's `thread_local!` pattern to give 
 
 ---
 
-### Task 10.3 — Avoid full buffer rebuild on `shift()`
+### Task 13.3 — Avoid full buffer rebuild on `shift()`
 
 **Files:** `mandelbrust-render/src/iteration_buffer.rs`, `mandelbrust-render/src/aa.rs`
 
@@ -354,7 +575,7 @@ If a simpler approach is preferred: use Rayon's `thread_local!` pattern to give 
 
 ---
 
-### Deliverables — Phase 10
+### Deliverables — Phase 13
 
 - [ ] `IterationResult` is 8 bytes (down from 16)
 - [ ] Tile buffers are pooled and reused across renders
@@ -363,13 +584,13 @@ If a simpler approach is preferred: use Rayon's `thread_local!` pattern to give 
 
 ---
 
-## Phase 11 — Advanced Coloring
+## Phase 14 — Advanced Coloring
 
 **Objective:** Add coloring techniques that dramatically improve visual quality.
 
 **Reference:** [optimization-report.md](optimization-report.md) section 7.
 
-### Task 11.1 — Histogram equalization coloring
+### Task 14.1 — Histogram equalization coloring
 
 **File:** `mandelbrust-render/src/palette.rs`
 
@@ -386,7 +607,7 @@ Add a toggle in the app (toolbar icon or checkbox in the fractal parameters pane
 
 ---
 
-### Task 11.2 — Distance estimation
+### Task 14.2 — Distance estimation
 
 **Files:** `mandelbrust-core/src/fractal.rs`, `mandelbrust-core/src/mandelbrot.rs`, `mandelbrust-core/src/julia.rs`, `mandelbrust-render/src/palette.rs`
 
@@ -400,7 +621,7 @@ Add a toggle in the app (toolbar icon or checkbox in the fractal parameters pane
 
 ---
 
-### Task 11.3 — Stripe average coloring for interior points
+### Task 14.3 — Stripe average coloring for interior points
 
 **Files:** `mandelbrust-core/src/mandelbrot.rs`, `mandelbrust-core/src/julia.rs`, `mandelbrust-render/src/palette.rs`
 
@@ -416,22 +637,22 @@ Interior points (currently solid black) can be colored using the orbit's angular
 
 ---
 
-### Deliverables — Phase 11
+### Deliverables — Phase 14
 
 - [ ] Histogram equalization toggle (instant re-colorize, no re-render)
 - [ ] Distance estimation coloring mode
 - [ ] Interior stripe average coloring mode (optional, default off)
-- [ ] All new coloring modes accessible from the UI
+- [ ] All new coloring modes accessible from the UI (and compatible with DisplayColorSettings)
 
 ---
 
-## Phase 12 — SIMD Vectorization
+## Phase 15 — SIMD Vectorization
 
 **Objective:** Process 4 pixels simultaneously per CPU core using SIMD instructions.
 
 **Reference:** [optimization-report.md](optimization-report.md) section 3.
 
-### Task 12.1 — Add batch iteration API
+### Task 15.1 — Add batch iteration API
 
 **File:** `mandelbrust-core/src/fractal.rs`
 
@@ -453,7 +674,7 @@ Update the tile renderer in `mandelbrust-render/src/renderer.rs` to call `iterat
 
 ---
 
-### Task 12.2 — SIMD Mandelbrot iteration (AVX2)
+### Task 15.2 — SIMD Mandelbrot iteration (AVX2)
 
 **Files:** new file `mandelbrust-core/src/mandelbrot_simd.rs`, `mandelbrust-core/src/mandelbrot.rs`
 
@@ -471,7 +692,7 @@ If using `std::arch`: wrap in `#[cfg(target_feature = "avx2")]` with a scalar fa
 
 ---
 
-### Task 12.3 — SIMD Julia iteration
+### Task 15.3 — SIMD Julia iteration
 
 **File:** `mandelbrust-core/src/julia.rs` (or new `julia_simd.rs`)
 
@@ -481,7 +702,7 @@ Same as task 12.2, but for the Julia set. The only difference is `z₀ = point` 
 
 ---
 
-### Deliverables — Phase 12
+### Deliverables — Phase 15
 
 - [ ] `iterate_batch()` API on the `Fractal` trait
 - [ ] SIMD Mandelbrot iteration (4 pixels per step)
@@ -491,11 +712,11 @@ Same as task 12.2, but for the Julia set. The only difference is `z₀ = point` 
 
 ---
 
-## Phase 13 — Animation & Video Export
+## Phase 16 — Animation & Video Export
 
 **Objective:** Enable smooth fractal zoom animations between bookmarks.
 
-### Task 13.1 — Keyframe system
+### Task 16.1 — Keyframe system
 
 **File:** new file `mandelbrust-app/src/animation.rs`
 
@@ -509,12 +730,12 @@ Same as task 12.2, but for the Julia set. The only difference is `z₀ = point` 
 
 ---
 
-### Task 13.2 — Frame-by-frame renderer
+### Task 16.2 — Frame-by-frame renderer
 
 **File:** `mandelbrust-app/src/animation.rs` or `mandelbrust-render/src/export.rs`
 
 1. Create `fn render_animation(plan: &AnimationPlan, fractal: ..., palette: ..., output_dir: &Path, cancel: &RenderCancel, progress_callback: impl Fn(usize, usize))`.
-2. For each frame: compute the viewport, call `render_offscreen()` (from Phase 8), write PNG to `output_dir/frame_00001.png`.
+2. For each frame: compute the viewport, call `render_offscreen()` (from Phase 11), write PNG to `output_dir/frame_00001.png`.
 3. Respect cancellation. Report progress via callback.
 4. Run on a background thread.
 
@@ -522,7 +743,7 @@ Same as task 12.2, but for the Julia set. The only difference is `z₀ = point` 
 
 ---
 
-### Task 13.3 — Animation UI
+### Task 16.3 — Animation UI
 
 **File:** `mandelbrust-app/src/ui/` (new submodule)
 
@@ -537,7 +758,7 @@ Same as task 12.2, but for the Julia set. The only difference is `z₀ = point` 
 
 ---
 
-### Task 13.4 — Optional ffmpeg integration
+### Task 16.4 — Optional ffmpeg integration
 
 **File:** `mandelbrust-app/src/animation.rs`
 
@@ -550,23 +771,23 @@ Same as task 12.2, but for the Julia set. The only difference is `z₀ = point` 
 
 ---
 
-### Deliverables — Phase 13
+### Deliverables — Phase 16
 
 - [ ] Keyframe system with logarithmic zoom interpolation
-- [ ] Frame-by-frame PNG export
+- [ ] Frame-by-frame PNG export (using DisplayColorSettings for coloring)
 - [ ] Animation UI with keyframe list, options, and progress
 - [ ] Optional ffmpeg MP4 conversion
 - [ ] Documentation updated
 
 ---
 
-## Phase 14 — GPU Compute Backend
+## Phase 17 — GPU Compute Backend
 
 **Objective:** Add an optional GPU rendering backend for 50–200x faster interactive exploration.
 
 **Reference:** [optimization-report.md](optimization-report.md) section 4.
 
-### Task 14.1 — wgpu compute pipeline setup
+### Task 17.1 — wgpu compute pipeline setup
 
 **Files:** new crate `mandelbrust-gpu/` or new module in `mandelbrust-render`
 
@@ -583,7 +804,7 @@ Ask for approval before adding `wgpu` as a dependency (it may already be availab
 
 ---
 
-### Task 14.2 — GPU colorization shader
+### Task 17.2 — GPU colorization shader
 
 **File:** same module as 14.1
 
@@ -595,7 +816,7 @@ Ask for approval before adding `wgpu` as a dependency (it may already be availab
 
 ---
 
-### Task 14.3 — Integrate GPU backend into the app
+### Task 17.3 — Integrate GPU backend into the app
 
 **File:** `mandelbrust-app/src/render_bridge.rs` (or equivalent after Phase 9 refactor)
 
@@ -609,7 +830,7 @@ Ask for approval before adding `wgpu` as a dependency (it may already be availab
 
 ---
 
-### Deliverables — Phase 14
+### Deliverables — Phase 17
 
 - [ ] WGSL compute shader for Mandelbrot/Julia iteration
 - [ ] WGSL compute shader for palette colorization
@@ -619,13 +840,13 @@ Ask for approval before adding `wgpu` as a dependency (it may already be availab
 
 ---
 
-## Phase 15 — Perturbation Theory (Deep Zoom)
+## Phase 18 — Perturbation Theory (Deep Zoom)
 
 **Objective:** Enable zoom depths beyond 10^15 by computing only deltas from a high-precision reference orbit.
 
 **Reference:** [optimization-report.md](optimization-report.md) section 9.
 
-### Task 15.1 — Arbitrary-precision reference orbit
+### Task 18.1 — Arbitrary-precision reference orbit
 
 **Files:** new module `mandelbrust-core/src/perturbation.rs`
 
@@ -638,7 +859,7 @@ Ask for approval before adding `wgpu` as a dependency (it may already be availab
 
 ---
 
-### Task 15.2 — Delta iteration (perturbation rendering)
+### Task 18.2 — Delta iteration (perturbation rendering)
 
 **File:** `mandelbrust-core/src/perturbation.rs`
 
@@ -651,7 +872,7 @@ Ask for approval before adding `wgpu` as a dependency (it may already be availab
 
 ---
 
-### Task 15.3 — Series approximation (skip initial iterations)
+### Task 18.3 — Series approximation (skip initial iterations)
 
 **File:** `mandelbrust-core/src/perturbation.rs`
 
@@ -664,7 +885,7 @@ Ask for approval before adding `wgpu` as a dependency (it may already be availab
 
 ---
 
-### Task 15.4 — Integrate perturbation into the render pipeline
+### Task 18.4 — Integrate perturbation into the render pipeline
 
 **Files:** `mandelbrust-render/src/renderer.rs`, `mandelbrust-app/src/render_bridge.rs`
 
@@ -678,7 +899,7 @@ Ask for approval before adding `wgpu` as a dependency (it may already be availab
 
 ---
 
-### Deliverables — Phase 15
+### Deliverables — Phase 18
 
 - [ ] Arbitrary-precision reference orbit computation
 - [ ] Delta iteration with glitch detection
@@ -689,17 +910,17 @@ Ask for approval before adding `wgpu` as a dependency (it may already be availab
 
 ---
 
-## Phase 16 — Polish & v1.0 Release
+## Phase 19 — Polish & v1.0 Release
 
 **Objective:** Stabilize, document, and prepare for public release.
 
-### Task 16.1 — Error handling audit
+### Task 19.1 — Error handling audit
 
 Audit all `unwrap()`, `expect()`, and `panic!()` calls across the workspace. Replace with proper error handling (`Result`, user-facing messages) where the error is recoverable. Keep `unwrap()` only where the invariant is guaranteed by construction (add a comment explaining why).
 
 ---
 
-### Task 16.2 — Cross-platform verification
+### Task 19.2 — Cross-platform verification
 
 Build and test on:
 - Windows (primary platform)
@@ -710,7 +931,7 @@ Fix any platform-specific issues (file paths, font rendering, window sizing).
 
 ---
 
-### Task 16.3 — Performance profiling
+### Task 19.3 — Performance profiling
 
 1. Profile a standard exploration session using `cargo flamegraph` or `perf`.
 2. Identify any remaining hot spots not addressed by earlier phases.
@@ -719,7 +940,7 @@ Fix any platform-specific issues (file paths, font rendering, window sizing).
 
 ---
 
-### Task 16.4 — Final documentation pass
+### Task 19.4 — Final documentation pass
 
 Update all documentation to reflect the final state:
 - `overview.md` — full architecture and feature description
@@ -729,7 +950,7 @@ Update all documentation to reflect the final state:
 
 ---
 
-### Task 16.5 — Release packaging
+### Task 19.5 — Release packaging
 
 1. Set up GitHub Actions to produce prebuilt binaries for Windows, macOS, Linux.
 2. Create a versioned GitHub release (v1.0.0).
@@ -737,12 +958,12 @@ Update all documentation to reflect the final state:
 
 ---
 
-### Deliverables — Phase 16
+### Deliverables — Phase 19
 
 - [ ] No unhandled panics in normal operation
 - [ ] Verified on at least 2 platforms
 - [ ] Profiled and optimized
-- [ ] Documentation complete and accurate
+- [ ] Documentation complete and accurate (including Display/color, Minimap, Julia C Explorer, bookmarks)
 - [ ] v1.0.0 release published with binaries
 
 ---
@@ -754,7 +975,8 @@ These are not scheduled but tracked as future possibilities:
 - **Additional fractal types** — Multibrot, Burning Ship, Newton, Tricorn
 - **Buddhabrot / Nebulabrot** rendering mode
 - **Orbit trap coloring** (Pickover stalks, circles, crosses)
-- **Palette editor** — custom gradient creation
+- **Palette editor** — custom gradient creation (Display/color profiles and panel from Phase 8 provide a foundation; editor would extend the palette definition within that model)
+- **Fade to black** — MSZP-style fade near max iterations (specified in Features_to_add.md §3; fits in DisplayColorSettings when implemented)
 - **GPU perturbation** — deep zoom on the GPU using emulated double precision
 - **WebAssembly build** — run MandelbRust in the browser via wasm
 - **Plugin system** — user-defined fractal formulas

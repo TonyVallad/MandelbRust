@@ -1,4 +1,6 @@
 mod bookmarks;
+mod color_profiles;
+mod display_color;
 mod preferences;
 
 use std::collections::{HashMap, HashSet};
@@ -12,8 +14,11 @@ use tracing::{debug, info, warn};
 
 use mandelbrust_core::{Complex, FractalParams, Julia, Mandelbrot, Viewport};
 use mandelbrust_render::{
-    builtin_palettes, compute_aa, render, AaSamples, IterationBuffer, Palette, RenderCancel,
-    RenderResult,
+    builtin_palettes, compute_aa, render, AaSamples, ColorParams, IterationBuffer, Palette,
+    RenderCancel, RenderResult, StartFrom as RenderStartFrom,
+};
+use display_color::{
+    DisplayColorSettings, PaletteMode as DisplayPaletteMode, StartFrom as DisplayStartFrom,
 };
 
 use bookmarks::{Bookmark, BookmarkStore};
@@ -39,6 +44,11 @@ const ADAPTIVE_ITER_RATE: f64 = 30.0;
 type BookmarkSnap = (usize, String, String, String, Vec<String>, String);
 /// Below this scale, warn about f64 precision limits.
 const PRECISION_WARN_SCALE: f64 = 1e-13;
+
+/// Phase 9: HUD box margin (same for all corners).
+const HUD_MARGIN: f32 = 8.0;
+/// Phase 9: HUD box corner radius (viewport info, params, render stats, minimap).
+const HUD_CORNER_RADIUS: f32 = 6.0;
 
 // ---------------------------------------------------------------------------
 // Fractal mode
@@ -150,10 +160,9 @@ struct MandelbRustApp {
     tiles_mirrored: usize,
     tiles_border_traced: usize,
 
-    // Coloring — Phase 5
+    // Coloring — Phase 5 (unified display/color settings, Phase 8)
     palettes: Vec<Palette>,
-    palette_index: usize,
-    smooth_coloring: bool,
+    display_color: DisplayColorSettings,
     current_iterations: Option<IterationBuffer>,
 
     // UI state
@@ -161,6 +170,10 @@ struct MandelbRustApp {
     show_hud: bool,
     show_controls: bool,
     show_palette_popup: bool,
+    /// Selected profile name in the Display/color panel (for Load).
+    color_profile_selected: String,
+    /// Name buffer for "Save as profile" in the Display/color panel.
+    color_profile_save_name: String,
     show_help: bool,
     show_crosshair: bool,
     drag_active: bool,
@@ -215,6 +228,17 @@ struct MandelbRustApp {
     show_update_or_save_dialog: bool,
     /// Editing buffer for the bookmarks directory path in the controls panel.
     bookmarks_dir_buf: String,
+
+    // Phase 9: Minimap
+    tx_minimap: mpsc::Sender<(RenderResult, u64)>,
+    rx_minimap: mpsc::Receiver<(RenderResult, u64)>,
+    /// Cached minimap texture and the revision it was built for.
+    minimap_texture: Option<(egui::TextureHandle, u64)>,
+    minimap_loading: bool,
+    /// Bumped when mode, julia_c, display_color, or minimap prefs change; used for cache invalidation.
+    minimap_revision: u64,
+    /// Set from display/color panel when palette is changed in a context that borrows self; cleared in update().
+    pending_minimap_bump: bool,
 }
 
 impl MandelbRustApp {
@@ -234,8 +258,7 @@ impl MandelbRustApp {
         let h = prefs.window_height as u32;
 
         // Restore last view if configured, otherwise use defaults.
-        let (mode, julia_c, params, viewport, palette_index, smooth_coloring, aa_level) = if prefs
-            .restore_last_view
+        let (mode, julia_c, params, viewport, display_color, aa_level) = if prefs.restore_last_view
         {
             if let Some(ref lv) = prefs.last_view {
                 let m = match lv.mode.as_str() {
@@ -246,6 +269,11 @@ impl MandelbRustApp {
                     .unwrap_or_else(|_| Viewport::default_mandelbrot(w, h));
                 let p = FractalParams::new(lv.max_iterations, lv.escape_radius)
                     .unwrap_or_default();
+                let dc = DisplayColorSettings {
+                    palette_index: lv.palette_index,
+                    smooth_coloring: lv.smooth_coloring,
+                    ..DisplayColorSettings::default()
+                };
                 info!(
                     "Restoring last view: {} at zoom {:.2e}",
                     lv.mode,
@@ -256,8 +284,7 @@ impl MandelbRustApp {
                     Complex::new(lv.julia_c_re, lv.julia_c_im),
                     p,
                     vp,
-                    lv.palette_index,
-                    lv.smooth_coloring,
+                    dc,
                     lv.aa_level,
                 )
             } else {
@@ -271,7 +298,9 @@ impl MandelbRustApp {
         bookmark_store.sort_by_date(); // Default: newest first.
         let bookmarks_dir_display = bookmark_store.directory().to_string_lossy().to_string();
 
-        Self {
+        let (tx_minimap, rx_minimap) = mpsc::channel();
+
+        let app = Self {
             mode,
             julia_c,
             params,
@@ -292,14 +321,15 @@ impl MandelbRustApp {
             tiles_border_traced: 0,
 
             palettes: builtin_palettes(),
-            palette_index,
-            smooth_coloring,
+            display_color,
             current_iterations: None,
 
             panel_size: [w, h],
             show_hud: true,
             show_controls: false,
             show_palette_popup: false,
+            color_profile_selected: String::new(),
+            color_profile_save_name: String::new(),
             show_help: false,
             show_crosshair: false,
             drag_active: false,
@@ -341,7 +371,16 @@ impl MandelbRustApp {
             last_jumped_bookmark_idx: None,
             show_update_or_save_dialog: false,
             bookmarks_dir_buf: bookmarks_dir_display,
-        }
+
+            tx_minimap,
+            rx_minimap,
+            minimap_texture: None,
+            minimap_loading: false,
+            minimap_revision: 0,
+            pending_minimap_bump: false,
+        };
+        color_profiles::ensure_default_profile();
+        app
     }
 
     // -- Bookmark helpers ------------------------------------------------------
@@ -367,8 +406,9 @@ impl MandelbRustApp {
             scale: self.viewport.scale,
             max_iterations: self.params.max_iterations,
             escape_radius: self.params.escape_radius,
-            palette_index: self.palette_index,
-            smooth_coloring: self.smooth_coloring,
+            palette_index: self.display_color.palette_index,
+            smooth_coloring: self.display_color.smooth_coloring,
+            display_color: Some(self.display_color.clone()),
             aa_level: self.aa_level,
             julia_c_re: self.julia_c.re,
             julia_c_im: self.julia_c.im,
@@ -420,8 +460,9 @@ impl MandelbRustApp {
             bm.scale = self.viewport.scale;
             bm.max_iterations = self.params.max_iterations;
             bm.escape_radius = self.params.escape_radius;
-            bm.palette_index = self.palette_index;
-            bm.smooth_coloring = self.smooth_coloring;
+            bm.palette_index = self.display_color.palette_index;
+            bm.smooth_coloring = self.display_color.smooth_coloring;
+            bm.display_color = Some(self.display_color.clone());
             bm.aa_level = self.aa_level;
             bm.julia_c_re = self.julia_c.re;
             bm.julia_c_im = self.julia_c.im;
@@ -472,11 +513,19 @@ impl MandelbRustApp {
         self.julia_c = Complex::new(bm.julia_c_re, bm.julia_c_im);
         self.params.max_iterations = bm.max_iterations;
         self.params.set_escape_radius(bm.escape_radius);
-        if bm.palette_index < self.palettes.len() {
-            self.palette_index = bm.palette_index;
+        if let Some(ref dc) = bm.display_color {
+            self.display_color = dc.clone();
+            if self.display_color.palette_index >= self.palettes.len() {
+                self.display_color.palette_index = 0;
+            }
+        } else {
+            if bm.palette_index < self.palettes.len() {
+                self.display_color.palette_index = bm.palette_index;
+            }
+            self.display_color.smooth_coloring = bm.smooth_coloring;
         }
-        self.smooth_coloring = bm.smooth_coloring;
         self.aa_level = bm.aa_level;
+        self.bump_minimap_revision(); // display_color may have changed
 
         self.push_history();
         self.viewport = Viewport::new(
@@ -499,8 +548,8 @@ impl MandelbRustApp {
             scale: self.viewport.scale,
             max_iterations: self.params.max_iterations,
             escape_radius: self.params.escape_radius,
-            palette_index: self.palette_index,
-            smooth_coloring: self.smooth_coloring,
+            palette_index: self.display_color.palette_index,
+            smooth_coloring: self.display_color.smooth_coloring,
             aa_level: self.aa_level,
             julia_c_re: self.julia_c.re,
             julia_c_im: self.julia_c.im,
@@ -510,7 +559,22 @@ impl MandelbRustApp {
     // -- Palette helpers -------------------------------------------------------
 
     fn current_palette(&self) -> &Palette {
-        &self.palettes[self.palette_index]
+        &self.palettes[self.display_color.palette_index]
+    }
+
+    fn color_params(&self) -> ColorParams {
+        let start_from = match self.display_color.start_from {
+            DisplayStartFrom::None => RenderStartFrom::None,
+            DisplayStartFrom::Black => RenderStartFrom::Black,
+            DisplayStartFrom::White => RenderStartFrom::White,
+        };
+        ColorParams {
+            smooth: self.display_color.smooth_coloring,
+            cycle_length: self.display_color.cycle_length(self.params.max_iterations),
+            start_from,
+            low_threshold_start: self.display_color.low_threshold_start,
+            low_threshold_end: self.display_color.low_threshold_end,
+        }
     }
 
     /// Colorize an iteration buffer, using AA data when available.
@@ -519,12 +583,11 @@ impl MandelbRustApp {
         iter_buf: &IterationBuffer,
         aa: Option<&AaSamples>,
     ) -> mandelbrust_render::RenderBuffer {
+        let params = self.color_params();
         if let Some(aa) = aa {
-            self.current_palette()
-                .colorize_aa(iter_buf, aa, self.smooth_coloring)
+            self.current_palette().colorize_aa(iter_buf, aa, &params)
         } else {
-            self.current_palette()
-                .colorize(iter_buf, self.smooth_coloring)
+            self.current_palette().colorize(iter_buf, &params)
         }
     }
 
@@ -639,6 +702,191 @@ impl MandelbRustApp {
             FractalMode::Mandelbrot => Viewport::default_mandelbrot(w, h),
             FractalMode::Julia => Viewport::default_julia(w, h),
         }
+    }
+
+    /// Viewport for the minimap: default overview of the current fractal (square, 1:1).
+    /// Mandelbrot: default Mandelbrot view. Julia: default Julia view (zoomed-out Julia set).
+    fn minimap_viewport(&self) -> Viewport {
+        let size = self.preferences.minimap_size.side_pixels();
+        match self.mode {
+            FractalMode::Mandelbrot => Viewport::default_mandelbrot(size, size),
+            FractalMode::Julia => Viewport::default_julia(size, size),
+        }
+    }
+
+    /// Bump minimap cache revision so the overview will be re-rendered.
+    fn bump_minimap_revision(&mut self) {
+        self.minimap_revision = self.minimap_revision.wrapping_add(1);
+    }
+
+    fn request_minimap_if_invalid(&mut self, ctx: &egui::Context) {
+        if self.minimap_loading {
+            return;
+        }
+        let current_rev = self.minimap_revision;
+        let texture_rev = self.minimap_texture.as_ref().map(|(_, r)| *r).unwrap_or(current_rev.wrapping_add(1));
+        if texture_rev == current_rev {
+            return;
+        }
+        self.minimap_loading = true;
+        let params = self.params.with_max_iterations(self.preferences.minimap_iterations);
+        let viewport = self.minimap_viewport();
+        let tx = self.tx_minimap.clone();
+        let revision = current_rev;
+        let mode = self.mode;
+        let julia_c = self.julia_c;
+        const MINIMAP_AA: u32 = 4;
+        thread::spawn(move || {
+            let cancel = Arc::new(RenderCancel::new());
+            let result = render_for_mode(mode, params, julia_c, &viewport, &cancel, MINIMAP_AA);
+            let _ = tx.send((result, revision));
+        });
+        ctx.request_repaint();
+    }
+
+    fn poll_minimap_response(&mut self, ctx: &egui::Context) {
+        while let Ok((result, revision)) = self.rx_minimap.try_recv() {
+            if result.cancelled {
+                self.minimap_loading = false;
+                continue;
+            }
+            let params = self.color_params();
+            let buffer = if let Some(ref aa) = result.aa_samples {
+                self.current_palette().colorize_aa(&result.iterations, aa, &params)
+            } else {
+                self.current_palette().colorize(&result.iterations, &params)
+            };
+            let image = egui::ColorImage::from_rgba_unmultiplied(
+                [buffer.width as usize, buffer.height as usize],
+                &buffer.pixels,
+            );
+            let handle = ctx.load_texture("minimap", image, egui::TextureOptions::LINEAR);
+            self.minimap_texture = Some((handle, revision));
+            self.minimap_loading = false;
+            ctx.request_repaint();
+        }
+    }
+
+    fn show_minimap_panel(&mut self, ctx: &egui::Context, hud_alpha: u8) {
+        let size = self.preferences.minimap_size.side_pixels() as f32;
+        let vp = self.minimap_viewport();
+
+        // Same margin from viewport edges as other HUD panels. For RIGHT_BOTTOM, negative offset = inset from corner.
+        const MINIMAP_ANCHOR_MARGIN: f32 = 8.0;
+        egui::Area::new(egui::Id::new("hud_minimap"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, [-MINIMAP_ANCHOR_MARGIN, -MINIMAP_ANCHOR_MARGIN])
+            .show(ctx, |ui| {
+                // No inner margin: white border is the outmost layer; no black band outside it.
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_black_alpha(hud_alpha))
+                    .inner_margin(egui::Margin::ZERO)
+                    .corner_radius(0.0)
+                    .show(ui, |ui| {
+                        let (rect, _response) =
+                            ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
+
+                        // Draw the fractal in a square sub-rect so aspect ratio is always 1:1 (avoids deformation).
+                        let image_side = rect.width().min(rect.height());
+                        let image_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(image_side, image_side));
+
+                        let to_minimap = |c: Complex| {
+                            let px = (c.re - vp.center.re) / vp.scale + (vp.width as f64) * 0.5;
+                            let py = (vp.height as f64) * 0.5 - (c.im - vp.center.im) / vp.scale;
+                            let sx = image_rect.min.x + (px as f32 / vp.width as f32) * image_rect.width();
+                            let sy = image_rect.min.y + (py as f32 / vp.height as f32) * image_rect.height();
+                            (sx, sy)
+                        };
+
+                        let valid_texture = self
+                            .minimap_texture
+                            .as_ref()
+                            .filter(|(_, rev)| *rev == self.minimap_revision)
+                            .map(|(h, _)| h);
+
+                        if let Some(tex) = valid_texture {
+                            let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                            ui.painter().image(
+                                tex.id(),
+                                image_rect,
+                                uv,
+                                egui::Color32::WHITE,
+                            );
+                        } else if self.minimap_loading {
+                            ui.painter().text(
+                                rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                "Updating…",
+                                egui::FontId::proportional(14.0),
+                                egui::Color32::GRAY,
+                            );
+                        } else {
+                            ui.painter().rect_filled(
+                                rect,
+                                0.0,
+                                egui::Color32::from_black_alpha(120),
+                            );
+                            ui.painter().text(
+                                rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                "Updating…",
+                                egui::FontId::proportional(12.0),
+                                egui::Color32::GRAY,
+                            );
+                        }
+
+                        let crosshair_alpha = (self.preferences.crosshair_opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
+                        let crosshair_color = egui::Color32::from_white_alpha(crosshair_alpha);
+
+                        // Viewport rectangle (cyan) and crosshairs only outside it (both modes)
+                        let cx = self.viewport.center.re;
+                        let cy = self.viewport.center.im;
+                        let w = self.viewport.width as f64 * self.viewport.scale;
+                        let h = self.viewport.height as f64 * self.viewport.scale;
+                        let (min_x, min_y) = to_minimap(Complex::new(cx - w * 0.5, cy + h * 0.5));
+                        let (max_x, max_y) = to_minimap(Complex::new(cx + w * 0.5, cy - h * 0.5));
+                        let min_x = min_x.clamp(image_rect.min.x, image_rect.max.x);
+                        let max_x = max_x.clamp(image_rect.min.x, image_rect.max.x);
+                        let min_y = min_y.clamp(image_rect.min.y, image_rect.max.y);
+                        let max_y = max_y.clamp(image_rect.min.y, image_rect.max.y);
+                        let viewport_rect = egui::Rect::from_min_max(
+                            egui::pos2(min_x, min_y),
+                            egui::pos2(max_x, max_y),
+                        );
+                        let stroke = egui::Stroke::new(1.5, egui::Color32::from_rgb(0, 255, 255));
+                        ui.painter().rect_stroke(viewport_rect, 0.0, stroke, egui::StrokeKind::Outside);
+                        let center_x = (min_x + max_x) * 0.5;
+                        let center_y = (min_y + max_y) * 0.5;
+                        // Crosshairs from image edge to viewport rect edge only (not inside the cyan rect)
+                        if image_rect.min.y < viewport_rect.min.y {
+                            ui.painter().line_segment(
+                                [egui::pos2(center_x, image_rect.min.y), egui::pos2(center_x, viewport_rect.min.y)],
+                                egui::Stroke::new(1.0, crosshair_color),
+                            );
+                        }
+                        if viewport_rect.max.y < image_rect.max.y {
+                            ui.painter().line_segment(
+                                [egui::pos2(center_x, viewport_rect.max.y), egui::pos2(center_x, image_rect.max.y)],
+                                egui::Stroke::new(1.0, crosshair_color),
+                            );
+                        }
+                        if image_rect.min.x < viewport_rect.min.x {
+                            ui.painter().line_segment(
+                                [egui::pos2(image_rect.min.x, center_y), egui::pos2(viewport_rect.min.x, center_y)],
+                                egui::Stroke::new(1.0, crosshair_color),
+                            );
+                        }
+                        if viewport_rect.max.x < image_rect.max.x {
+                            ui.painter().line_segment(
+                                [egui::pos2(viewport_rect.max.x, center_y), egui::pos2(image_rect.max.x, center_y)],
+                                egui::Stroke::new(1.0, crosshair_color),
+                            );
+                        }
+
+                        // Minimap panel border: 1px white, 75% opacity
+                        let border_stroke = egui::Stroke::new(1.0, egui::Color32::from_white_alpha(191));
+                        ui.painter().rect_stroke(rect, 0.0, border_stroke, egui::StrokeKind::Outside);
+                    });
+            });
     }
 
     fn reset_view(&mut self) {
@@ -764,9 +1012,8 @@ impl MandelbRustApp {
 
     /// Colorize a preview result into the drag background texture.
     fn apply_drag_preview(&mut self, ctx: &egui::Context, result: RenderResult) {
-        let buffer = self
-            .current_palette()
-            .colorize(&result.iterations, self.smooth_coloring);
+        let params = self.color_params();
+        let buffer = self.current_palette().colorize(&result.iterations, &params);
         let image = egui::ColorImage::from_rgba_unmultiplied(
             [buffer.width as usize, buffer.height as usize],
             &buffer.pixels,
@@ -916,6 +1163,7 @@ impl MandelbRustApp {
         {
             if let Some(c) = self.cursor_complex {
                 self.julia_c = c;
+                self.bump_minimap_revision();
                 self.needs_render = true;
             }
         }
@@ -1014,6 +1262,7 @@ impl MandelbRustApp {
             if input.key_pressed(egui::Key::J) {
                 if let Some(c) = self.cursor_complex {
                     self.julia_c = c;
+                    self.bump_minimap_revision();
                 }
                 let was_julia = self.mode == FractalMode::Julia;
                 self.mode = FractalMode::Julia;
@@ -1024,12 +1273,10 @@ impl MandelbRustApp {
                 self.needs_render = true;
             }
 
-            // M: switch to Mandelbrot mode
-            if input.key_pressed(egui::Key::M) && self.mode != FractalMode::Mandelbrot {
-                self.mode = FractalMode::Mandelbrot;
-                self.push_history();
-                self.viewport = self.default_viewport();
-                self.needs_render = true;
+            // M: toggle minimap (Phase 9)
+            if input.key_pressed(egui::Key::M) {
+                self.preferences.show_minimap = !self.preferences.show_minimap;
+                self.preferences.save();
             }
         });
 
@@ -1069,11 +1316,14 @@ impl MandelbRustApp {
         }
 
         // -- Top-left: viewport info (read-only) ---------------------------------
+        let hud_alpha = (self.preferences.hud_panel_opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
         egui::Area::new(egui::Id::new("hud_params"))
-            .anchor(egui::Align2::LEFT_TOP, [8.0, 8.0])
+            .anchor(egui::Align2::LEFT_TOP, [HUD_MARGIN, HUD_MARGIN])
             .show(ctx, |ui| {
-                egui::Frame::popup(ui.style())
-                    .fill(egui::Color32::from_black_alpha(180))
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_black_alpha(hud_alpha))
+                    .inner_margin(egui::Margin::same(8))
+                    .corner_radius(HUD_CORNER_RADIUS)
                     .show(ui, |ui| {
                         ui.style_mut().visuals.override_text_color =
                             Some(egui::Color32::from_rgb(220, 220, 220));
@@ -1096,7 +1346,7 @@ impl MandelbRustApp {
                         ui.label(format!(
                             "Palette: {} ({})",
                             self.current_palette().name,
-                            if self.smooth_coloring {
+                            if self.display_color.smooth_coloring {
                                 "smooth"
                             } else {
                                 "raw"
@@ -1109,13 +1359,14 @@ impl MandelbRustApp {
                     });
             });
 
-        // -- Bottom-right: render stats ---------------------------------------
+        // -- Bottom-centre: render stats (Phase 9: moved from bottom-right for minimap) --
         egui::Area::new(egui::Id::new("hud_render"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, [0.0, 0.0])
+            .anchor(egui::Align2::CENTER_BOTTOM, [0.0, HUD_MARGIN])
             .show(ctx, |ui| {
                 egui::Frame::NONE
-                    .fill(egui::Color32::from_black_alpha(160))
+                    .fill(egui::Color32::from_black_alpha(hud_alpha))
                     .inner_margin(egui::Margin::same(8))
+                    .corner_radius(HUD_CORNER_RADIUS)
                     .show(ui, |ui| {
                         ui.set_min_width(180.0);
                         ui.style_mut().visuals.override_text_color =
@@ -1146,6 +1397,12 @@ impl MandelbRustApp {
                     });
             });
 
+        // -- Bottom-right: minimap (Phase 9) ------------------------------------
+        let show_minimap = self.preferences.show_minimap;
+        if show_minimap {
+            self.show_minimap_panel(ctx, hud_alpha);
+        }
+
         // -- Top-right: toolbar icons + fractal params --------------------------
         self.show_top_right_toolbar(ctx);
     }
@@ -1155,6 +1412,7 @@ impl MandelbRustApp {
     fn show_top_right_toolbar(&mut self, ctx: &egui::Context) {
         use egui_material_icons::icons::*;
 
+        let hud_alpha = (self.preferences.hud_panel_opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
         let icon_on = egui::Color32::from_rgb(200, 200, 200);
         let icon_off = egui::Color32::from_rgb(90, 90, 90);
         let mi = |icon: &str| egui::RichText::new(icon).size(18.0).color(icon_on);
@@ -1218,10 +1476,10 @@ impl MandelbRustApp {
                             {
                                 self.reset_view();
                             }
-                            // Palette picker
-                            let pal_name = self.palettes[self.palette_index].name;
+                            // Display/color settings
+                            let pal_name = self.palettes[self.display_color.palette_index].name;
                             if add_icon_btn(ui, mi(ICON_PALETTE), true)
-                                .on_hover_text(format!("Palette: {pal_name}"))
+                                .on_hover_text(format!("Display/color settings ({pal_name})"))
                                 .clicked()
                             {
                                 self.show_palette_popup = !self.show_palette_popup;
@@ -1251,22 +1509,6 @@ impl MandelbRustApp {
                                     params_changed = true;
                                 }
                             }
-                            // Smooth coloring toggle
-                            if add_icon_btn(
-                                ui,
-                                mi_state(ICON_GRADIENT, self.smooth_coloring),
-                                true,
-                            )
-                            .on_hover_text(if self.smooth_coloring {
-                                "Smooth coloring: On"
-                            } else {
-                                "Smooth coloring: Off"
-                            })
-                            .clicked()
-                            {
-                                self.smooth_coloring = !self.smooth_coloring;
-                                palette_changed = true;
-                            }
                             // Save bookmark
                             let has_bookmark = self.last_jumped_bookmark_idx.is_some();
                             if add_icon_btn(ui, mi_state(ICON_BOOKMARK_ADD, has_bookmark), true)
@@ -1295,6 +1537,18 @@ impl MandelbRustApp {
                                     self.failed_thumbnails.clear();
                                 }
                             }
+                            // Minimap (Phase 9)
+                            if add_icon_btn(
+                                ui,
+                                mi_state(ICON_MAP, self.preferences.show_minimap),
+                                true,
+                            )
+                            .on_hover_text("Minimap (M)")
+                            .clicked()
+                            {
+                                self.preferences.show_minimap = !self.preferences.show_minimap;
+                                self.preferences.save();
+                            }
                             // Controls & shortcuts
                             if add_icon_btn(ui, mi(ICON_HELP_OUTLINE), true)
                                 .on_hover_text("Controls & shortcuts")
@@ -1313,59 +1567,197 @@ impl MandelbRustApp {
                     });
             });
 
-        // ---- Palette picker popup ----
+        // ---- Display/color settings panel ----
         if self.show_palette_popup {
-            let mut close_popup = false;
-            egui::Window::new("Palette")
-                .id(egui::Id::new("palette_picker"))
-                .collapsible(false)
-                .resizable(false)
+            egui::Window::new("Display / color")
+                .id(egui::Id::new("display_color_panel"))
+                .collapsible(true)
+                .resizable(true)
+                .default_width(280.0)
                 .anchor(egui::Align2::RIGHT_TOP, [-8.0, 38.0])
                 .frame(
                     egui::Frame::NONE
-                        .fill(egui::Color32::from_black_alpha(200))
-                        .inner_margin(egui::Margin::same(8))
-                        .corner_radius(4.0),
+                        .fill(egui::Color32::from_black_alpha(220))
+                        .inner_margin(egui::Margin::same(10))
+                        .corner_radius(6.0),
                 )
                 .show(ctx, |ui| {
                     ui.style_mut().visuals.override_text_color =
                         Some(egui::Color32::from_rgb(220, 220, 220));
+
+                    // Profiles
+                    ui.heading("Profiles");
+                    let profile_names = color_profiles::list_profiles();
+                    if self.color_profile_selected.is_empty() && !profile_names.is_empty() {
+                        self.color_profile_selected = profile_names[0].clone();
+                    }
+                    egui::ComboBox::from_id_salt(egui::Id::new("color_profile_list"))
+                        .selected_text(
+                            if self.color_profile_selected.is_empty() {
+                                "(none)"
+                            } else {
+                                &self.color_profile_selected
+                            },
+                        )
+                        .show_ui(ui, |ui| {
+                            for name in &profile_names {
+                                ui.selectable_value(
+                                    &mut self.color_profile_selected,
+                                    name.clone(),
+                                    name.as_str(),
+                                );
+                            }
+                        });
+                    if ui.button("Load").clicked() && !self.color_profile_selected.is_empty() {
+                        let mut loaded =
+                            color_profiles::load_profile(&self.color_profile_selected);
+                        if loaded.palette_index >= self.palettes.len() {
+                            loaded.palette_index = 0;
+                        }
+                        self.display_color = loaded;
+                        palette_changed = true;
+                        self.bump_minimap_revision();
+                    }
+                    ui.horizontal(|ui| {
+                        ui.label("Save as:");
+                        ui.text_edit_singleline(&mut self.color_profile_save_name);
+                        let save_name = self.color_profile_save_name.trim();
+                        let save_name = if save_name.is_empty() {
+                            "Default"
+                        } else {
+                            save_name
+                        };
+                        if ui.button("Save").clicked() {
+                            if let Err(e) =
+                                color_profiles::save_profile(save_name, &self.display_color)
+                            {
+                                warn!("Failed to save color profile: {}", e);
+                            }
+                        }
+                    });
+
+                    ui.add_space(8.0);
+                    // Palette list
+                    ui.heading("Palette");
                     for (i, pal) in self.palettes.iter().enumerate() {
                         ui.horizontal(|ui| {
-                            // Color swatch preview
-                            let swatch = pal.preview_colors(60);
+                            let swatch = pal.preview_colors(40);
                             let (rect, _) = ui
-                                .allocate_exact_size(egui::vec2(60.0, 14.0), egui::Sense::hover());
+                                .allocate_exact_size(egui::vec2(40.0, 12.0), egui::Sense::hover());
                             let painter = ui.painter_at(rect);
                             for (j, c) in swatch.iter().enumerate() {
                                 painter.rect_filled(
                                     egui::Rect::from_min_size(
                                         egui::pos2(rect.min.x + j as f32, rect.min.y),
-                                        egui::vec2(1.0, 14.0),
+                                        egui::vec2(1.0, 12.0),
                                     ),
                                     0.0,
                                     egui::Color32::from_rgb(c[0], c[1], c[2]),
                                 );
                             }
-                            let label = if i == self.palette_index {
+                            let label = if i == self.display_color.palette_index {
                                 egui::RichText::new(pal.name).strong()
                             } else {
                                 egui::RichText::new(pal.name)
                             };
                             if ui
-                                .selectable_label(i == self.palette_index, label)
+                                .selectable_label(i == self.display_color.palette_index, label)
                                 .clicked()
                             {
-                                self.palette_index = i;
+                                self.display_color.palette_index = i;
                                 palette_changed = true;
-                                close_popup = true;
+                                self.pending_minimap_bump = true;
                             }
                         });
                     }
+
+                    ui.add_space(8.0);
+                    ui.heading("Palette mode");
+                    ui.horizontal(|ui| {
+                        let by_cycles = matches!(self.display_color.palette_mode, DisplayPaletteMode::ByCycles { .. });
+                        if ui.selectable_label(by_cycles, "By cycles").clicked() {
+                            let n = match self.display_color.palette_mode {
+                                DisplayPaletteMode::ByCycles { n } => n,
+                                DisplayPaletteMode::ByCycleLength { .. } => 1,
+                            };
+                            self.display_color.palette_mode = DisplayPaletteMode::ByCycles { n };
+                            palette_changed = true;
+                            self.bump_minimap_revision();
+                        }
+                        if ui.selectable_label(!by_cycles, "By cycle length").clicked() {
+                            let len = match self.display_color.palette_mode {
+                                DisplayPaletteMode::ByCycles { .. } => 256,
+                                DisplayPaletteMode::ByCycleLength { len } => len,
+                            };
+                            self.display_color.palette_mode = DisplayPaletteMode::ByCycleLength { len };
+                            palette_changed = true;
+                            self.bump_minimap_revision();
+                        }
+                    });
+                    let (mut mode_val, is_cycles) = match self.display_color.palette_mode {
+                        DisplayPaletteMode::ByCycles { n } => (n as i32, true),
+                        DisplayPaletteMode::ByCycleLength { len } => (len as i32, false),
+                    };
+                    if ui.add(egui::DragValue::new(&mut mode_val).range(1..=i32::MAX)).changed() {
+                        let v = mode_val.max(1) as u32;
+                        self.display_color.palette_mode = if is_cycles {
+                            DisplayPaletteMode::ByCycles { n: v }
+                        } else {
+                            DisplayPaletteMode::ByCycleLength { len: v }
+                        };
+                        palette_changed = true;
+                        self.bump_minimap_revision();
+                    }
+                    ui.label(if is_cycles { "cycles" } else { "iterations per cycle" });
+
+                    ui.add_space(8.0);
+                    ui.heading("Start from");
+                    ui.horizontal(|ui| {
+                        for (opt, label) in [
+                            (DisplayStartFrom::None, "None"),
+                            (DisplayStartFrom::Black, "Black"),
+                            (DisplayStartFrom::White, "White"),
+                        ] {
+                            if ui
+                                .selectable_label(self.display_color.start_from == opt, label)
+                                .clicked()
+                            {
+                                self.display_color.start_from = opt;
+                                palette_changed = true;
+                                self.bump_minimap_revision();
+                            }
+                        }
+                    });
+                    if self.display_color.start_from != DisplayStartFrom::None {
+                        ui.horizontal(|ui| {
+                            ui.label("Threshold start:");
+                            let mut start = self.display_color.low_threshold_start as i32;
+                            if ui.add(egui::DragValue::new(&mut start).range(0..=i32::MAX)).changed() {
+                                self.display_color.low_threshold_start = start.max(0) as u32;
+                                palette_changed = true;
+                                self.bump_minimap_revision();
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Threshold end:");
+                            let mut end = self.display_color.low_threshold_end as i32;
+                            if ui.add(egui::DragValue::new(&mut end).range(0..=i32::MAX)).changed() {
+                                self.display_color.low_threshold_end = end.max(0) as u32;
+                                palette_changed = true;
+                                self.bump_minimap_revision();
+                            }
+                        });
+                    }
+
+                    ui.add_space(8.0);
+                    if ui
+                        .checkbox(&mut self.display_color.smooth_coloring, "Smooth coloring (log-log)")
+                        .changed()
+                    {
+                        palette_changed = true;
+                        self.bump_minimap_revision();
+                    }
                 });
-            if close_popup {
-                self.show_palette_popup = false;
-            }
         }
 
         // ---- Cursor coordinates (below toolbar, only with crosshair) ----
@@ -1383,12 +1775,12 @@ impl MandelbRustApp {
 
         // ---- Fractal parameters panel (bottom-left) ----
         egui::Area::new(egui::Id::new("hud_fractal_params"))
-            .anchor(egui::Align2::LEFT_BOTTOM, [0.0, 0.0])
+            .anchor(egui::Align2::LEFT_BOTTOM, [HUD_MARGIN, HUD_MARGIN])
             .show(ctx, |ui| {
                 egui::Frame::NONE
-                    .fill(egui::Color32::from_black_alpha(160))
+                    .fill(egui::Color32::from_black_alpha(hud_alpha))
                     .inner_margin(egui::Margin::same(8))
-                    .corner_radius(4.0)
+                    .corner_radius(HUD_CORNER_RADIUS)
                     .show(ui, |ui| {
                         ui.style_mut().visuals.override_text_color =
                             Some(egui::Color32::from_rgb(220, 220, 220));
@@ -1469,6 +1861,7 @@ impl MandelbRustApp {
         if mode_changed {
             self.push_history();
             self.viewport = self.default_viewport();
+            self.bump_minimap_revision();
             self.needs_render = true;
         } else if params_changed {
             self.needs_render = true;
@@ -1543,6 +1936,73 @@ impl MandelbRustApp {
                             .to_string();
                     }
                 });
+
+                ui.add_space(10.0);
+                ui.heading("Minimap & HUD");
+                if ui
+                    .checkbox(&mut self.preferences.show_minimap, "Show minimap")
+                    .changed()
+                {
+                    self.preferences.save();
+                }
+                ui.horizontal(|ui| {
+                    ui.label("Minimap size:");
+                    egui::ComboBox::from_id_salt(egui::Id::new("minimap_size"))
+                        .selected_text(match self.preferences.minimap_size {
+                            preferences::MinimapSize::Small => "Small (128)",
+                            preferences::MinimapSize::Medium => "Medium (256)",
+                            preferences::MinimapSize::Large => "Large (384)",
+                        })
+                        .show_ui(ui, |ui| {
+                            use preferences::MinimapSize;
+                            for size in [MinimapSize::Small, MinimapSize::Medium, MinimapSize::Large] {
+                                let label = match size {
+                                    MinimapSize::Small => "Small (128 px)",
+                                    MinimapSize::Medium => "Medium (256 px)",
+                                    MinimapSize::Large => "Large (384 px)",
+                                };
+                                if ui
+                                    .selectable_value(&mut self.preferences.minimap_size, size, label)
+                                    .changed()
+                                {
+                                    self.preferences.save();
+                                    self.bump_minimap_revision();
+                                }
+                            }
+                        });
+                });
+                if ui
+                    .add(egui::Slider::new(&mut self.preferences.minimap_zoom_half_extent, 0.5..=10.0)
+                        .text("Minimap zoom (range ±"))
+                    .changed()
+                {
+                    self.preferences.save();
+                    self.bump_minimap_revision();
+                }
+                ui.label("(complex-plane half-extent, default 2 = -2..2)");
+                if ui
+                    .add(egui::Slider::new(&mut self.preferences.minimap_iterations, 50..=2000)
+                        .text("Minimap iterations")
+                        .logarithmic(true))
+                    .changed()
+                {
+                    self.preferences.save();
+                    self.bump_minimap_revision();
+                }
+                if ui
+                    .add(egui::Slider::new(&mut self.preferences.crosshair_opacity, 0.0..=1.0)
+                        .text("Crosshair opacity"))
+                    .changed()
+                {
+                    self.preferences.save();
+                }
+                if ui
+                    .add(egui::Slider::new(&mut self.preferences.hud_panel_opacity, 0.0..=1.0)
+                        .text("HUD panel opacity"))
+                    .changed()
+                {
+                    self.preferences.save();
+                }
             });
 
         if !open {
@@ -1578,6 +2038,7 @@ impl MandelbRustApp {
                     .show(ui, |ui| {
                         let keys: &[(&str, &str)] = &[
                             ("H", "Toggle HUD"),
+                            ("M", "Toggle minimap"),
                             ("S", "Save bookmark"),
                             ("B", "Bookmark explorer"),
                             ("C", "Toggle crosshair"),
@@ -1625,11 +2086,11 @@ impl MandelbRustApp {
                         (ICON_ARROW_BACK, "Navigate back"),
                         (ICON_ARROW_FORWARD, "Navigate forward"),
                         (ICON_RESTART_ALT, "Reset view"),
-                        (ICON_PALETTE, "Choose color palette"),
+                        (ICON_PALETTE, "Display/color settings (palette, cycles, smooth)"),
                         (ICON_DEBLUR, "Cycle anti-aliasing"),
-                        (ICON_GRADIENT, "Toggle smooth coloring"),
                         (ICON_BOOKMARK_ADD, "Save bookmark"),
                         (ICON_BOOKMARKS, "Bookmark explorer"),
+                        (ICON_MAP, "Minimap (M)"),
                         (ICON_HELP_OUTLINE, "This help window"),
                         (ICON_SETTINGS, "Open settings"),
                     ];
@@ -2292,8 +2753,16 @@ impl eframe::App for MandelbRustApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.set_visuals(egui::Visuals::dark());
 
+        if self.pending_minimap_bump {
+            self.bump_minimap_revision();
+            self.pending_minimap_bump = false;
+        }
         // Poll for background render results.
         self.poll_responses(ctx);
+        self.poll_minimap_response(ctx);
+        if self.show_hud && self.preferences.show_minimap {
+            self.request_minimap_if_invalid(ctx);
+        }
 
         // Central panel: fractal canvas.
         egui::CentralPanel::default()
@@ -2476,8 +2945,9 @@ fn do_render<F: mandelbrust_core::Fractal + Sync>(
     viewport: &Viewport,
     cancel: &Arc<RenderCancel>,
     aa_level: u32,
+    use_real_axis_symmetry: bool,
 ) -> RenderResult {
-    let mut result = render(fractal, viewport, cancel);
+    let mut result = render(fractal, viewport, cancel, use_real_axis_symmetry);
     if aa_level > 0 && !result.cancelled {
         let aa_start = std::time::Instant::now();
         result.aa_samples = compute_aa(fractal, viewport, &result.iterations, aa_level, cancel);
@@ -2495,9 +2965,10 @@ fn render_for_mode(
     cancel: &Arc<RenderCancel>,
     aa_level: u32,
 ) -> RenderResult {
+    let use_symmetry = mode == FractalMode::Mandelbrot;
     match mode {
-        FractalMode::Mandelbrot => do_render(&Mandelbrot::new(params), viewport, cancel, aa_level),
-        FractalMode::Julia => do_render(&Julia::new(julia_c, params), viewport, cancel, aa_level),
+        FractalMode::Mandelbrot => do_render(&Mandelbrot::new(params), viewport, cancel, aa_level, use_symmetry),
+        FractalMode::Julia => do_render(&Julia::new(julia_c, params), viewport, cancel, aa_level, use_symmetry),
     }
 }
 
@@ -2589,17 +3060,20 @@ fn defaults_for(
     Complex,
     FractalParams,
     Viewport,
-    usize,
-    bool,
+    DisplayColorSettings,
     u32,
 ) {
+    let display_color = DisplayColorSettings {
+        palette_index: prefs.default_palette_index,
+        smooth_coloring: true,
+        ..DisplayColorSettings::default()
+    };
     (
         FractalMode::Mandelbrot,
         Julia::default_c(),
         FractalParams::default().with_max_iterations(prefs.default_max_iterations),
         Viewport::default_mandelbrot(w, h),
-        prefs.default_palette_index,
-        true,
+        display_color,
         2,
     )
 }

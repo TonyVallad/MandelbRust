@@ -24,13 +24,14 @@ Fast, precise, extensible — and built to last.
 - **Progressive rendering** (fast preview → refined result)
 - **Clean separation** between UI, rendering, and math
 - **Simplicity** — keep code as clear and straightforward as possible while following current Rust best practices
+- **Modular file layout** — keep source files from growing too long; split modules and extract logic into separate files when a file would otherwise become large (see §3 Project Structure)
 - **Native, portable executable**
 
 ---
 
 ## 3. Project Structure
 
-MandelbRust is organized as a **Rust workspace** with three crates, each with a focused responsibility:
+MandelbRust is organized as a **Rust workspace** with three crates, each with a focused responsibility. **File size:** source files should be kept to a manageable length; when a module or file would grow too large, split it into smaller, focused files (e.g. separate UI panels, helpers, or submodules) so the codebase stays navigable and maintainable.
 
 ```
 MandelbRust/
@@ -73,7 +74,7 @@ Desktop application using `egui` / `eframe`. Contains:
 
 | Module | Contents |
 |---|---|
-| `main.rs` | `MandelbRustApp` — main application struct and all UI logic: rendering pipeline orchestration, keyboard/mouse input, HUD overlay (four-corner layout), top-right Material Symbols icon toolbar with state-aware dimming, palette popup picker, fractal parameters panel (bottom-left), controls/help window, settings panel, bookmark explorer with favorites toggle, save/update dialogs, thumbnail caching with automatic invalidation |
+| `main.rs` | `MandelbRustApp` — main application struct and all UI logic: rendering pipeline orchestration, keyboard/mouse input, HUD overlay (top-left, top-right toolbar, bottom-left, bottom-centre, bottom-right layout; see §9 HUD Layout), top-right Material Symbols icon toolbar with state-aware dimming, palette popup picker, fractal parameters panel (bottom-left), controls/help window, settings panel, bookmark explorer with favorites toggle, save/update dialogs, thumbnail caching with automatic invalidation |
 | `bookmarks.rs` | `Bookmark` data structure (self-contained with embedded base64 PNG thumbnail), `BookmarkStore` (one `.json` file per bookmark, immediate persistence, directory scanning), `LabelNode` for hierarchical label trees, `encode_thumbnail` / `decode_thumbnail` for inline image embedding, automatic legacy migration |
 | `preferences.rs` | `AppPreferences` — persistent user settings (window size, defaults, restore-last-view, configurable bookmarks directory). `LastView` for capturing/restoring the last exploration state |
 
@@ -218,18 +219,21 @@ Multithreading is a **core requirement**, not an optimization.
 - **Smooth coloring** using normalized iteration values: `ν = n + 1 − log₂(ln(|zₙ|))`
 - Palette selection is **instantaneous** — the `IterationBuffer` is stored separately from the pixel buffer, so switching palettes re-colorizes without re-rendering
 - **Palette popup picker** — clicking the palette icon in the toolbar opens a popup showing all palettes with color gradient preview swatches; clicking a palette selects it immediately
-- Architecture allows future palette editor / histogram coloring
+- Architecture allows future palette editor / histogram coloring. **Planned:** A **Display/color settings** panel (replacing the palette icon) with full control over palette mode (cycles vs cycle length), start-from black/white, log-log/smooth toggle, and **color profiles** (one file per profile in a `color_profiles/` folder). See **§13 Planned features** and `Features_to_add.md`.
 
 ### HUD Layout
-The HUD is distributed across four screen areas for minimal visual intrusion. Pressing **H** hides everything; all overlays, toolbar, panels, and floating windows disappear together.
+The HUD is distributed across several screen areas for minimal visual intrusion. Pressing **H** hides everything; all overlays, toolbar, panels, and floating windows disappear together.
 
 | Area | Content |
 |---|---|
 | **Top-left** | Read-only viewport info: fractal mode, center coordinates, zoom level, iteration count, palette name, precision warning |
-| **Top-right toolbar** | Icon bar using **Material Symbols** (embedded via `egui_material_icons`): arrow_back / arrow_forward (navigate back / forward), restart_alt (reset view), palette (palette picker popup), deblur (cycle anti-aliasing), gradient (smooth coloring), bookmark_add (save bookmark), bookmarks (open bookmark explorer), help_outline (controls & shortcuts), settings (settings — always last). Icons are evenly spaced in a fixed-width grid. Icons that represent a toggleable state (AA, smooth coloring, bookmarks explorer) are **dimmed when off** and bright when active. |
+| **Top-right toolbar** | Icon bar using **Material Symbols** (embedded via `egui_material_icons`): arrow_back / arrow_forward (navigate back / forward), restart_alt (reset view), palette (palette picker popup), deblur (cycle anti-aliasing), gradient (smooth coloring), bookmark_add (save bookmark), bookmarks (open bookmark explorer), help_outline (controls & shortcuts), settings (settings — always last). Icons are evenly spaced in a fixed-width grid. Icons that represent a toggleable state (AA, smooth coloring, bookmarks explorer) are **dimmed when off** and bright when active. **Style:** toolbar stays exactly as it is (no border/opacity changes from the global box styling). |
 | **Top-right** (below toolbar) | Cursor complex coordinates (visible only when crosshair is enabled, no background) |
 | **Bottom-left** | Fractal parameters panel: fractal mode selector (Mandelbrot / Julia), Julia `c` value, iteration slider with x10 / /10 buttons, escape radius slider, adaptive iterations checkbox |
-| **Bottom-right** | Render stats: phase, timing, tile counts, AA status (semi-transparent background) |
+| **Bottom-centre** | Render stats: phase, timing, tile counts, AA status |
+| **Bottom-right** | Minimap (when enabled; see §13 Planned features). Zoomed-out overview with viewport indicator and crosshair. |
+
+**Box styling (all HUD boxes except the toolbar):** Same **margins** as the top boxes (top-left and top-right area). **Rounded corners** like the top-left and bottom-left panels. **No border** (like the current bottom-left). **Background opacity** 65% by default, configurable in the settings menu. The **toolbar is excluded** from these styling rules.
 
 A **progress bar** appears at the top of the viewport during rendering and AA passes.
 
@@ -256,6 +260,8 @@ Bookmarks capture the **entire exploration state**, including:
 - Julia constant (if applicable)
 - User metadata: name, hierarchical labels, notes
 - Base64-encoded PNG thumbnail (160px max width, auto-generated on save)
+
+**Planned:** Bookmarks will store **all display/color settings individually** (palette, palette mode, cycles, start from black/white, log-log, etc.), not only a profile reference, so one-off tweaks are preserved. See **§13 Planned features** and `Features_to_add.md`.
 
 #### Storage — One File Per Bookmark
 
@@ -309,6 +315,7 @@ User preferences are accessible via the **⚙** icon in the toolbar (always the 
 
 - **Restore last view on startup** — captures and restores fractal mode, viewport, palette, and AA level
 - **Bookmarks folder** — text field with **Browse…** (native folder picker via `rfd`), **Apply**, and **Reset** buttons. The chosen path is persisted across sessions.
+- **Planned (see Features_to_add.md):** **HUD panel opacity** — single setting for all HUD boxes (65% default, configurable). Minimap options: size (small/medium/large), zoom (complex-plane range, default -2..2), default iteration count (500), crosshair line opacity (50% default).
 
 Preferences are stored as a JSON file in the OS config directory, using the `directories` crate for cross-platform path resolution.
 
@@ -365,13 +372,25 @@ The release profile uses **full LTO** (`lto = "fat"`) and a single codegen unit 
 - Adaptive anti-aliasing (2×2 / 4×4)
 - Coloring system with 5 palettes, smooth coloring, and palette popup picker
 - Material Symbols icon toolbar with state-aware dimming
-- Four-corner HUD layout (viewport info, toolbar, fractal parameters, render stats)
+- HUD layout: viewport info (top-left), toolbar (top-right), fractal parameters (bottom-left), render stats (bottom-centre), minimap (bottom-right when enabled); unified box styling (margins, rounded corners, no border, configurable opacity)
 - Controls & shortcuts help window
 - Self-contained bookmark files (one `.json` per bookmark with embedded thumbnail) for easy sharing, with labels, favorites, search, sorting, and persistent storage
 - Bookmark explorer with independent favorites toggle, fractal tabs, label filtering, and thumbnail previews
 - Configurable bookmarks directory with native folder picker
 - Application preferences with last-view restoration
 - High-resolution image export
+
+### Planned features (see `Features_to_add.md` for full behaviour)
+
+The following features are planned and specified in **`Features_to_add.md`** at the project root.
+
+| Feature | Summary |
+|--------|--------|
+| **Minimap** | In the **bottom-right** corner of the viewport. **Square (1:1)** aspect ratio; complex-plane range **-2 to 2** on both axes by default, **zoom configurable in settings**. Zoomed-out overview (500 iterations default, configurable), cached until image-affecting parameters change. Cyan viewport rectangle with white crosshair lines (50% opacity, configurable). Toggle with **M** key or new toolbar icon; hidden when HUD is off. Size (small / medium / large) configurable. Uses same box styling as other HUD boxes (margins, rounded corners, no border, 65% opacity default). |
+| **Julia C Explorer** | Replace “Shift+Click = C” with a **grid of small Julia set previews**. Each cell maps viewport position to C; clicking a cell sets the Julia constant. Square previews; coordinate range −2 to 2 by default, configurable from the explorer. Show C coordinates on hover. Color settings editable in the grid view. Default 100 max iterations (configurable). Grid size configurable. |
+| **Display/color settings (MSZP-inspired)** | **Icon:** Replace the current palette icon with a **Display/color settings** icon that opens a panel to edit all display/color options and to select, save, and load profiles. **Profiles:** One file per profile in a **color profiles** folder at the program root (easy to share). **Bookmarks:** Save **all display/color settings individually** in each bookmark (full snapshot, not just profile name), so one-off tweaks are preserved. **Palette mode:** By number of cycles or by cycle length (same palette, different iteration→position mapping). **Start from black/white:** MSZP-style fade for the first few iterations, with **low_threshold_start** and **low_threshold_end**. **Log-log:** Toggle for continuous iteration (smooth) vs integer (banded); same as current smooth-coloring toggle, to be part of profiles and bookmarks. **Architecture:** Single coherent display/color settings model (serializable for profiles and bookmarks, easy to extend). |
+
+Details, edge cases, and exact behaviour are in **`Features_to_add.md`**.
 
 ### Post-v1.0
 

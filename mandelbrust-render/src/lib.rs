@@ -10,7 +10,7 @@ pub use aa::{compute_aa, AaSamples};
 pub use buffer::RenderBuffer;
 pub use error::RenderError;
 pub use iteration_buffer::IterationBuffer;
-pub use palette::{builtin_palettes, Palette};
+pub use palette::{builtin_palettes, ColorParams, Palette, StartFrom};
 pub use renderer::{render, RenderCancel, RenderResult};
 pub use tile::TILE_SIZE;
 

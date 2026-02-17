@@ -45,6 +45,44 @@ pub struct AppPreferences {
     /// Custom bookmarks directory. When empty, the default OS config path is used.
     #[serde(default)]
     pub bookmarks_dir: String,
+
+    // Phase 9: Minimap
+    #[serde(default = "default_true")]
+    pub show_minimap: bool,
+    /// Minimap side length: Small=128, Medium=256, Large=384.
+    #[serde(default)]
+    pub minimap_size: MinimapSize,
+    /// Half-extent of complex-plane range (e.g. 2.0 → -2..2). Configurable zoom.
+    #[serde(default = "default_minimap_zoom")]
+    pub minimap_zoom_half_extent: f64,
+    #[serde(default = "default_minimap_iterations")]
+    pub minimap_iterations: u32,
+    /// Crosshair lines opacity 0.0..=1.0 (default 0.5).
+    #[serde(default = "default_crosshair_opacity")]
+    pub crosshair_opacity: f32,
+    /// HUD panel background opacity 0.0..=1.0 (default 0.65). Excludes toolbar.
+    #[serde(default = "default_hud_panel_opacity")]
+    pub hud_panel_opacity: f32,
+}
+
+/// Minimap widget size (side length in pixels).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MinimapSize {
+    Small,
+    #[default]
+    Medium,
+    Large,
+}
+
+impl MinimapSize {
+    pub fn side_pixels(self) -> u32 {
+        match self {
+            MinimapSize::Small => 128,
+            MinimapSize::Medium => 256,
+            MinimapSize::Large => 384,
+        }
+    }
 }
 
 fn default_window_width() -> f32 {
@@ -59,6 +97,18 @@ fn default_max_iterations() -> u32 {
 fn default_true() -> bool {
     true
 }
+fn default_minimap_zoom() -> f64 {
+    2.0
+}
+fn default_minimap_iterations() -> u32 {
+    500
+}
+fn default_crosshair_opacity() -> f32 {
+    0.5
+}
+fn default_hud_panel_opacity() -> f32 {
+    0.65
+}
 
 impl Default for AppPreferences {
     fn default() -> Self {
@@ -70,6 +120,12 @@ impl Default for AppPreferences {
             restore_last_view: true,
             last_view: None,
             bookmarks_dir: String::new(),
+            show_minimap: true,
+            minimap_size: MinimapSize::default(),
+            minimap_zoom_half_extent: default_minimap_zoom(),
+            minimap_iterations: default_minimap_iterations(),
+            crosshair_opacity: default_crosshair_opacity(),
+            hud_panel_opacity: default_hud_panel_opacity(),
         }
     }
 }

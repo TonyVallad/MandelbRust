@@ -243,7 +243,7 @@ mod tests {
         let viewport = Viewport::default_mandelbrot(64, 64);
         let cancel = Arc::new(RenderCancel::new());
 
-        let result = crate::render(&mandelbrot, &viewport, &cancel);
+        let result = crate::render(&mandelbrot, &viewport, &cancel, true);
         let mask = detect_boundaries(&result.iterations);
 
         // There should be some boundary pixels (the set boundary is non-trivial).
@@ -265,7 +265,7 @@ mod tests {
         let viewport = Viewport::default_mandelbrot(64, 64);
         let cancel = Arc::new(RenderCancel::new());
 
-        let result = crate::render(&mandelbrot, &viewport, &cancel);
+        let result = crate::render(&mandelbrot, &viewport, &cancel, true);
         let aa = compute_aa(&mandelbrot, &viewport, &result.iterations, 2, &cancel);
 
         let aa = aa.expect("should produce AA samples");
@@ -282,7 +282,7 @@ mod tests {
             Viewport::new(mandelbrust_core::Complex::new(10.0, 10.0), 0.001, 64, 64).unwrap();
         let cancel = Arc::new(RenderCancel::new());
 
-        let result = crate::render(&mandelbrot, &viewport, &cancel);
+        let result = crate::render(&mandelbrot, &viewport, &cancel, true);
         let aa = compute_aa(&mandelbrot, &viewport, &result.iterations, 2, &cancel);
 
         assert!(aa.is_none(), "uniform image should have no boundary pixels");

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use mandelbrust_core::{Complex, FractalParams, Julia, Mandelbrot, Viewport};
-use mandelbrust_render::{render, Palette, RenderCancel};
+use mandelbrust_render::{render, ColorParams, Palette, RenderCancel};
 
 #[test]
 fn end_to_end_mandelbrot_render() {
@@ -9,7 +9,7 @@ fn end_to_end_mandelbrot_render() {
     let viewport = Viewport::default_mandelbrot(200, 150);
     let cancel = Arc::new(RenderCancel::new());
 
-    let result = render(&mandelbrot, &viewport, &cancel);
+    let result = render(&mandelbrot, &viewport, &cancel, true);
 
     assert!(!result.cancelled);
     assert_eq!(result.iterations.width, 200);
@@ -20,7 +20,7 @@ fn end_to_end_mandelbrot_render() {
 
     // Colorize and check the image is not entirely black.
     let palette = Palette::default();
-    let buffer = palette.colorize(&result.iterations, true);
+    let buffer = palette.colorize(&result.iterations, &ColorParams::from_smooth(true));
     let has_non_black = buffer
         .pixels
         .chunks_exact(4)
@@ -37,7 +37,7 @@ fn end_to_end_julia_render() {
     let viewport = Viewport::new(Complex::new(0.0, 0.0), 0.02, 100, 100).unwrap();
     let cancel = Arc::new(RenderCancel::new());
 
-    let result = render(&julia, &viewport, &cancel);
+    let result = render(&julia, &viewport, &cancel, false);
 
     assert!(!result.cancelled);
     assert_eq!(result.iterations.data.len(), 100 * 100);
@@ -49,8 +49,8 @@ fn render_determinism() {
     let viewport = Viewport::default_mandelbrot(128, 96);
     let cancel = Arc::new(RenderCancel::new());
 
-    let r1 = render(&mandelbrot, &viewport, &cancel);
-    let r2 = render(&mandelbrot, &viewport, &cancel);
+    let r1 = render(&mandelbrot, &viewport, &cancel, true);
+    let r2 = render(&mandelbrot, &viewport, &cancel, true);
 
     assert_eq!(
         r1.iterations.data, r2.iterations.data,
@@ -66,11 +66,11 @@ fn symmetry_produces_correct_image() {
 
     // Viewport centred on im=0 → symmetry applies.
     let vp_sym = Viewport::new(Complex::new(-0.5, 0.0), 0.01, 128, 128).unwrap();
-    let result_sym = render(&mandelbrot, &vp_sym, &cancel);
+    let result_sym = render(&mandelbrot, &vp_sym, &cancel, true);
 
     // Viewport shifted off im=0 → no symmetry (different image, just checking it renders).
     let vp_nosym = Viewport::new(Complex::new(-0.5, 0.001), 0.01, 128, 128).unwrap();
-    let result_nosym = render(&mandelbrot, &vp_nosym, &cancel);
+    let result_nosym = render(&mandelbrot, &vp_nosym, &cancel, true);
 
     assert!(result_sym.tiles_mirrored > 0, "symmetry should be used");
     assert_eq!(result_nosym.tiles_mirrored, 0, "no symmetry off-axis");
@@ -86,12 +86,13 @@ fn palette_switch_without_recompute() {
     let viewport = Viewport::default_mandelbrot(128, 96);
     let cancel = Arc::new(RenderCancel::new());
 
-    let result = render(&mandelbrot, &viewport, &cancel);
+    let result = render(&mandelbrot, &viewport, &cancel, true);
 
     // Apply two different palettes to the same iteration data.
     let palettes = mandelbrust_render::builtin_palettes();
-    let buf_a = palettes[0].colorize(&result.iterations, true);
-    let buf_b = palettes[1].colorize(&result.iterations, true);
+    let params = ColorParams::from_smooth(true);
+    let buf_a = palettes[0].colorize(&result.iterations, &params);
+    let buf_b = palettes[1].colorize(&result.iterations, &params);
 
     // Both produce valid-sized buffers.
     assert_eq!(buf_a.pixels.len(), 128 * 96 * 4);

@@ -178,10 +178,14 @@ fn render_tile<F: Fractal>(
 /// can be used from another thread to abort the render.
 ///
 /// Returns raw iteration data — apply a `Palette` to get displayable pixels.
+///
+/// Set `use_real_axis_symmetry` to `true` only for fractals symmetric about the real axis
+/// (e.g. Mandelbrot). Julia sets are not symmetric in general, so pass `false` for them.
 pub fn render<F: Fractal + Sync>(
     fractal: &F,
     viewport: &Viewport,
     cancel: &Arc<RenderCancel>,
+    use_real_axis_symmetry: bool,
 ) -> RenderResult {
     let start = Instant::now();
     let gen = cancel.generation();
@@ -197,8 +201,12 @@ pub fn render<F: Fractal + Sync>(
         "Starting tiled render"
     );
 
-    // Try symmetry optimisation.
-    let classified = classify_tiles_for_symmetry(&tiles, viewport.height, viewport.center.im);
+    // Symmetry optimisation only valid for Mandelbrot (real-axis symmetric); Julia must not use it.
+    let classified = if use_real_axis_symmetry {
+        classify_tiles_for_symmetry(&tiles, viewport.height, viewport.center.im)
+    } else {
+        None
+    };
 
     // Set up progress tracking for the tile phase.
     let renderable_count = if let Some(ref ct) = classified {
@@ -351,7 +359,7 @@ mod tests {
         let viewport = Viewport::default_mandelbrot(128, 128);
         let cancel = Arc::new(RenderCancel::new());
 
-        let result = render(&mandelbrot, &viewport, &cancel);
+        let result = render(&mandelbrot, &viewport, &cancel, true);
 
         assert!(!result.cancelled);
         assert_eq!(result.iterations.data.len(), 128 * 128);
@@ -366,7 +374,7 @@ mod tests {
             Viewport::new(mandelbrust_core::Complex::new(-0.5, 0.0), 0.01, 128, 128).unwrap();
         let cancel = Arc::new(RenderCancel::new());
 
-        let result = render(&mandelbrot, &viewport, &cancel);
+        let result = render(&mandelbrot, &viewport, &cancel, true);
 
         assert!(!result.cancelled);
         assert!(
@@ -384,7 +392,7 @@ mod tests {
             Viewport::new(mandelbrust_core::Complex::new(5.0, 5.0), 0.001, 128, 128).unwrap();
         let cancel = Arc::new(RenderCancel::new());
 
-        let result = render(&mandelbrot, &viewport, &cancel);
+        let result = render(&mandelbrot, &viewport, &cancel, true);
 
         assert!(!result.cancelled);
         assert!(
@@ -405,7 +413,7 @@ mod tests {
             cancel_clone.cancel();
         });
 
-        let result = render(&mandelbrot, &viewport, &cancel);
+        let result = render(&mandelbrot, &viewport, &cancel, true);
         if result.cancelled {
             let total_tiles = ((1024 + 63) / 64) * ((1024 + 63) / 64);
             assert!(
