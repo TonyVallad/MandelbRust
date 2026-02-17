@@ -35,6 +35,8 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 - **Controls & shortcuts window** — lists all keyboard, mouse, and toolbar actions in a clean reference panel
 - **Selection-box zoom** — right-click drag to zoom into a drawn rectangle
 - **Crosshair & center marker** — toggle for precise navigation
+- **Minimap** — overview of the fractal with viewport indicator (toggle via toolbar or **M**); configurable size and opacity in Settings
+- **Session persistence** — full display/color settings (palette, smooth coloring, palette mode, etc.) and last view are saved on exit and restored on startup
 
 ## Bookmark Explorer
 
@@ -55,6 +57,14 @@ Save, search, filter, and jump to exploration states. Each bookmark is a self-co
 </p>
 
 Five built-in palettes with smooth coloring. The palette picker popup lets you preview and switch palettes instantly — no re-render needed.
+
+## Minimap
+
+<p align="center">
+  <img src="docs/img/Screenshot_Minimap.png" alt="Minimap with viewport indicator" width="400">
+</p>
+
+The minimap shows an overview of the current fractal; the cyan rectangle is your current viewport. Toggle it from the toolbar (map icon) or with **M**. In Settings you can choose size (Small / Medium / Large) and opacity (default 75%).
 
 ## Controls
 
@@ -85,6 +95,7 @@ Right-click and drag to draw a selection rectangle, then release to zoom into th
 | `A` | Cycle AA (Off / 2×2 / 4×4) |
 | `S` | Save / update bookmark |
 | `B` | Toggle bookmark explorer |
+| `M` | Toggle minimap |
 | `Backspace` | View history back |
 | `Shift+Backspace` | View history forward |
 | `Escape` | Close dialogs / help / settings, cancel render |
@@ -95,7 +106,7 @@ Right-click and drag to draw a selection rectangle, then release to zoom into th
   <img src="docs/img/Screenshot_Controls_and_Shortcuts.png" alt="Controls and shortcuts window" width="280">
 </p>
 
-Navigate back/forward, reset view, palette picker, cycle AA, smooth coloring, save bookmark, bookmark explorer, controls & shortcuts, settings — all accessible from the icon bar. Stateful icons dim when their feature is off. Press the help icon to see the full reference shown above.
+Navigate back/forward, reset view, palette picker, cycle AA, smooth coloring, save bookmark, bookmark explorer, minimap, controls & shortcuts, settings — all accessible from the icon bar. Stateful icons (AA, smooth coloring, bookmarks panel) dim when off; the save-bookmark and minimap icons stay bright. Press the help icon to see the full reference shown above.
 
 ## Planned Features
 
