@@ -1927,10 +1927,44 @@ impl MandelbRustApp {
                         mode_changed = self.mode != old_mode;
 
                         if self.mode == FractalMode::Julia {
-                            ui.label(format!(
-                                "c = {:.6} {:+.6}i",
-                                self.julia_c.re, self.julia_c.im
-                            ));
+                            const JULIA_C_RANGE: f64 = 2.0;
+                            let mut re = self.julia_c.re;
+                            let mut im = self.julia_c.im;
+                            let re_range = -JULIA_C_RANGE..=JULIA_C_RANGE;
+                            let im_range = -JULIA_C_RANGE..=JULIA_C_RANGE;
+                            // Show enough decimals so values are fully visible in the field.
+                            const C_DECIMALS: usize = 10;
+
+                            ui.horizontal(|ui| {
+                                ui.label("Re(c):");
+                                if ui
+                                    .add(
+                                        egui::DragValue::new(&mut re)
+                                            .range(re_range)
+                                            .fixed_decimals(C_DECIMALS),
+                                    )
+                                    .changed()
+                                {
+                                    self.julia_c.re = re;
+                                    self.bump_minimap_revision();
+                                    params_changed = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Im(c):");
+                                if ui
+                                    .add(
+                                        egui::DragValue::new(&mut im)
+                                            .range(im_range)
+                                            .fixed_decimals(C_DECIMALS),
+                                    )
+                                    .changed()
+                                {
+                                    self.julia_c.im = im;
+                                    self.bump_minimap_revision();
+                                    params_changed = true;
+                                }
+                            });
                             ui.weak("Shift+Click to pick c");
                         }
 
