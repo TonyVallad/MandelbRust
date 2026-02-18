@@ -130,7 +130,7 @@ The trait is used via **static dispatch** (generics, not `dyn Fractal`), ensurin
 
 ### Supported Fractals
 - **Mandelbrot set** (default at startup)
-- **Julia sets** (parameter selectable interactively via Shift+Click or the fractal mode selector in the bottom-left panel)
+- **Julia sets** (click **Julia** in the bottom-left to open the Julia C Explorer and pick c from a grid; in Julia mode, Re(c)/Im(c) via DragValue or Shift+Click on the viewport)
 - Extensible to additional fractals (Multibrot, Burning Ship, Newton, etc.)
 
 ### Iteration Model
@@ -317,7 +317,7 @@ User preferences are accessible via the **⚙** icon in the toolbar (always the 
 
 - **Restore last view on startup** — captures and restores fractal mode, viewport, palette, and AA level
 - **Bookmarks folder** — text field with **Browse…** (native folder picker via `rfd`), **Apply**, and **Reset** buttons. The chosen path is persisted across sessions.
-- **Planned (see [Features_to_add.md](Features_to_add.md)):** **HUD panel opacity** — single setting for all HUD boxes (65% default, configurable). Minimap options: size (small/medium/large), zoom (complex-plane range, default -2..2), default iteration count (500), crosshair line opacity (50% default).
+- **HUD panel opacity** — single setting for all HUD boxes (65% default, configurable). **Minimap:** size (small/medium/large), zoom (complex-plane range, default -2..2), iterations (500 default), opacity (75% default), crosshair line opacity (50% default). **J preview panel:** show/hide toggle, Julia preview iterations (250 default).
 
 Preferences are stored as a JSON file in the OS config directory, using the `directories` crate for cross-platform path resolution.
 
@@ -384,7 +384,7 @@ The release profile uses **full LTO** (`lto = "fat"`) and a single codegen unit 
 
 ### Planned features (see [Features_to_add.md](Features_to_add.md) for full behaviour)
 
-The following features are planned and specified in [**Features_to_add.md**](Features_to_add.md) in the docs folder.
+The following features are specified in [**Features_to_add.md**](Features_to_add.md). **Minimap** (§1), **Julia C Explorer** (§2), and **J preview panel** (§3) are implemented.
 
 | Feature | Summary |
 |--------|--------|

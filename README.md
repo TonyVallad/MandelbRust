@@ -11,7 +11,7 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 
 ## Status
 
-**Active development** — Phases 0–10 complete. The core explorer is fully functional with real-time rendering, multiple color palettes, adaptive anti-aliasing, a persistent bookmark system, and an optimized release profile (LTO, parallel colorization, cached hot-loop values).
+**Active development** — Phases 0–10 and 10.5 complete. The core explorer is fully functional with real-time rendering, multiple color palettes, adaptive anti-aliasing, a persistent bookmark system, J preview panel (Phase 10.5), and an optimized release profile (LTO, parallel colorization, cached hot-loop values).
 
 ## Current Features
 

@@ -106,7 +106,7 @@ Change how the Julia C Explorer is opened (by **clicking “Julia”** in the bo
   - **Appearance:** The panel has the **same size, shape, and opacity** as the minimap (same size setting, square, same HUD panel opacity). Same 1 px white border (75% opacity), no black margin, inset from the viewport edge.
 
 - **J preview in Mandelbrot mode (Julia preview)**
-  - Content: **Julia set** for **c = complex coordinate under the cursor**. Updates **as the cursor moves**.
+  - Content: **Julia set** for **c = complex coordinate under the cursor**. Updates **as the cursor moves**; the panel shows the most recently completed preview (may lag slightly during fast cursor movement).
   - **Iterations:** **250 by default**; must be **configurable in Settings** (e.g. “Julia preview iterations”).
   - **4×4 anti-aliasing** is applied to this preview.
   - **Left-click** on the main canvas (no drag) → set **c** to the clicked pixel’s complex coordinate and **switch to Julia mode** (i.e. “load” the Julia set that would be previewed at that pixel). Pan (left-drag) is unchanged.

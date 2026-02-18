@@ -2,7 +2,7 @@
 
 Phases 0–10 are complete. This roadmap covers everything from Phase 11 onward.
 
-**Next development focus:** **Phase 10.5 — J preview panel and Julia C Explorer UX** (see below). After that, Phase 11 (Image Export) and beyond. Each phase is written so an AI agent can execute the tasks in order without ambiguity. Full behaviour and edge cases are specified in [Features_to_add.md](Features_to_add.md); the roadmap breaks implementation into digestible steps.
+**Next development focus:** **Phase 11 — Image Export** (see below). Phase 10.5 (J preview panel and Julia C Explorer UX) is complete. Each phase is written so an AI agent can execute the tasks in order without ambiguity. Full behaviour and edge cases are specified in [Features_to_add.md](Features_to_add.md); the roadmap breaks implementation into digestible steps.
 
 Each phase is a self-contained unit of work that produces a testable, working state.
 
@@ -32,6 +32,7 @@ Each phase is a self-contained unit of work that produces a testable, working st
 | 7 | Quick Performance Wins | Done |
 | 8 | Display/color settings model and profiles | Done |
 | 9 | Minimap | Done |
+| 10.5 | J preview panel and Julia C Explorer UX | Done |
 
 ---
 
@@ -343,11 +344,13 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 
 ---
 
-## Phase 10.5 — J preview panel and Julia C Explorer UX *(next to implement)*
+## Phase 10.5 — J preview panel and Julia C Explorer UX ✅
 
 **Objective:** Change how the Julia C Explorer is opened (click “Julia” in the bottom-left instead of J); add a J-key-toggled preview panel above the minimap that shows a live Julia preview in Mandelbrot mode (with left-click to load Julia at cursor c) or a Mandelbrot preview with crosshair at c in Julia mode. All previews use 4×4 AA.
 
 **Reference:** [Features_to_add.md](Features_to_add.md) §3 (J preview panel and Julia C Explorer access).
+
+**Code layout:** Prefer new modules (e.g. `j_preview.rs`) for the J preview panel logic and drawing so that `main.rs` does not grow too long; keep state in `App` and move request/poll/draw helpers into the new module.
 
 ### Task 10.5.1 — Open Julia C Explorer by clicking “Julia”
 
@@ -402,12 +405,12 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 
 ### Deliverables — Phase 10.5
 
-- [ ] Clicking “Julia” in the bottom-left opens the Julia C Explorer; picking a cell sets c and switches to Julia mode
-- [ ] J toggles the J preview panel above the minimap (gap = HUD margin; same size, shape, opacity as minimap; 4×4 AA)
-- [ ] In Mandelbrot mode: panel shows live Julia at cursor (250 iter default, configurable); left-click loads Julia at that c
-- [ ] In Julia mode: panel shows Mandelbrot with white crosshair at c; updates when c or display/color change; uses minimap iterations
-- [ ] Settings: “Julia preview iterations” (default 250)
-- [ ] Documentation and shortcuts updated
+- [x] Clicking “Julia” in the bottom-left opens the Julia C Explorer; picking a cell sets c and switches to Julia mode
+- [x] J toggles the J preview panel above the minimap (gap = HUD margin; same size, shape, opacity as minimap; 4×4 AA)
+- [x] In Mandelbrot mode: panel shows live Julia at cursor (250 iter default, configurable); left-click loads Julia at that c
+- [x] In Julia mode: panel shows Mandelbrot with white crosshair at c; updates when c or display/color change; uses minimap iterations
+- [x] Settings: “Julia preview iterations” (default 250)
+- [x] Documentation and shortcuts updated
 
 ---
 

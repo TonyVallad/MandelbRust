@@ -81,6 +81,12 @@ pub struct AppPreferences {
     /// Side length of each grid cell in pixels (cols/rows = viewport / this).
     #[serde(default = "default_julia_explorer_cell_size_px")]
     pub julia_explorer_cell_size_px: u32,
+
+    // Phase 10.5: J preview panel
+    #[serde(default)]
+    pub show_j_preview: bool,
+    #[serde(default = "default_julia_preview_iterations")]
+    pub julia_preview_iterations: u32,
 }
 
 /// Minimap widget size (side length in pixels).
@@ -139,6 +145,9 @@ fn default_julia_explorer_extent_half() -> f64 {
 fn default_julia_explorer_cell_size_px() -> u32 {
     64
 }
+fn default_julia_preview_iterations() -> u32 {
+    250
+}
 
 impl Default for AppPreferences {
     fn default() -> Self {
@@ -161,6 +170,8 @@ impl Default for AppPreferences {
             julia_explorer_max_iterations: default_julia_explorer_max_iterations(),
             julia_explorer_extent_half: default_julia_explorer_extent_half(),
             julia_explorer_cell_size_px: default_julia_explorer_cell_size_px(),
+            show_j_preview: false,
+            julia_preview_iterations: default_julia_preview_iterations(),
         }
     }
 }

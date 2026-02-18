@@ -1,6 +1,7 @@
 mod bookmarks;
 mod color_profiles;
 mod display_color;
+mod j_preview;
 mod preferences;
 
 use std::collections::{HashMap, HashSet};
@@ -274,6 +275,16 @@ struct MandelbRustApp {
     tx_julia_grid_req: mpsc::Sender<JuliaGridRequest>,
     rx_julia_grid_resp: mpsc::Receiver<(u32, u32, RenderResult)>,
     grid_cancel: Arc<RenderCancel>,
+
+    // Phase 10.5: J preview panel (above minimap)
+    tx_jpreview: mpsc::Sender<(RenderResult, u64)>,
+    rx_jpreview: mpsc::Receiver<(RenderResult, u64)>,
+    j_preview_texture: Option<(egui::TextureHandle, u64)>,
+    j_preview_loading: bool,
+    j_preview_revision: u64,
+    j_preview_cancel: Arc<RenderCancel>,
+    /// Last cursor position we requested a Julia preview for (Mandelbrot mode); avoid duplicate requests.
+    last_j_preview_cursor: Option<Complex>,
 }
 
 impl MandelbRustApp {
@@ -286,6 +297,9 @@ impl MandelbRustApp {
         let (tx_julia_grid_req, rx_julia_grid_req) = mpsc::channel();
         let (tx_julia_grid_resp, rx_julia_grid_resp) = mpsc::channel();
         let grid_cancel = Arc::new(RenderCancel::new());
+
+        let (tx_jpreview, rx_jpreview) = mpsc::channel();
+        let j_preview_cancel = Arc::new(RenderCancel::new());
 
         // Spawn the background render worker.
         let ctx = egui_ctx.clone();
@@ -442,9 +456,16 @@ impl MandelbRustApp {
             julia_explorer_recolorize: false,
             julia_explorer_restart_pending: false,
             julia_explorer_picked_c: None,
-            tx_julia_grid_req: tx_julia_grid_req,
-            rx_julia_grid_resp: rx_julia_grid_resp,
+            tx_julia_grid_req,
+            rx_julia_grid_resp,
             grid_cancel,
+            tx_jpreview,
+            rx_jpreview,
+            j_preview_texture: None,
+            j_preview_loading: false,
+            j_preview_revision: 0,
+            j_preview_cancel,
+            last_j_preview_cursor: None,
         };
         color_profiles::ensure_default_profile();
         app
@@ -784,6 +805,13 @@ impl MandelbRustApp {
     /// Bump minimap cache revision so the overview will be re-rendered.
     fn bump_minimap_revision(&mut self) {
         self.minimap_revision = self.minimap_revision.wrapping_add(1);
+        self.bump_j_preview_revision();
+    }
+
+    /// Bump J preview cache revision (Phase 10.5). Called when J is toggled, or when (Julia mode) c or display/minimap settings change.
+    fn bump_j_preview_revision(&mut self) {
+        self.j_preview_revision = self.j_preview_revision.wrapping_add(1);
+        self.last_j_preview_cursor = None;
     }
 
     fn request_minimap_if_invalid(&mut self, ctx: &egui::Context) {
@@ -830,6 +858,119 @@ impl MandelbRustApp {
             let handle = ctx.load_texture("minimap", image, egui::TextureOptions::LINEAR);
             self.minimap_texture = Some((handle, revision));
             self.minimap_loading = false;
+            ctx.request_repaint();
+        }
+    }
+
+    /// Phase 10.5: Viewport for the J preview panel (square, same size as minimap).
+    /// Mandelbrot mode: we show Julia at cursor, use default Julia view. Julia mode: Mandelbrot, use default Mandelbrot view.
+    fn j_preview_viewport(&self) -> Viewport {
+        let size = self.preferences.minimap_size.side_pixels();
+        match self.mode {
+            FractalMode::Mandelbrot => Viewport::default_julia(size, size),
+            FractalMode::Julia => Viewport::default_mandelbrot(size, size),
+        }
+    }
+
+    fn request_j_preview_if_needed(&mut self, ctx: &egui::Context) {
+        if !self.preferences.show_j_preview {
+            return;
+        }
+        const J_PREVIEW_AA: u32 = 4;
+        let size = self.preferences.minimap_size.side_pixels();
+
+        match self.mode {
+            FractalMode::Mandelbrot => {
+                let Some(cursor_c) = self.cursor_complex else { return };
+                if self.j_preview_loading {
+                    return;
+                }
+                if self.last_j_preview_cursor == Some(cursor_c) {
+                    return;
+                }
+                self.last_j_preview_cursor = Some(cursor_c);
+                self.j_preview_loading = true;
+                self.j_preview_revision = self.j_preview_revision.wrapping_add(1);
+                let revision = self.j_preview_revision;
+                let params = self
+                    .params
+                    .with_max_iterations(self.preferences.julia_preview_iterations);
+                let viewport = Viewport::default_julia(size, size);
+                let tx = self.tx_jpreview.clone();
+                let cancel = self.j_preview_cancel.clone();
+                thread::spawn(move || {
+                    let result = render_for_mode(
+                        FractalMode::Julia,
+                        params,
+                        cursor_c,
+                        &viewport,
+                        &cancel,
+                        J_PREVIEW_AA,
+                    );
+                    let _ = tx.send((result, revision));
+                });
+            }
+            FractalMode::Julia => {
+                if self.j_preview_loading {
+                    return;
+                }
+                let current_rev = self.j_preview_revision;
+                let texture_rev = self
+                    .j_preview_texture
+                    .as_ref()
+                    .map(|(_, r)| *r)
+                    .unwrap_or(current_rev.wrapping_add(1));
+                if texture_rev == current_rev {
+                    return;
+                }
+                self.j_preview_loading = true;
+                let params = self.params.with_max_iterations(self.preferences.minimap_iterations);
+                let viewport = Viewport::default_mandelbrot(size, size);
+                let tx = self.tx_jpreview.clone();
+                let revision = current_rev;
+                let julia_c = self.julia_c;
+                let cancel = self.j_preview_cancel.clone();
+                thread::spawn(move || {
+                    let result = render_for_mode(
+                        FractalMode::Mandelbrot,
+                        params,
+                        julia_c,
+                        &viewport,
+                        &cancel,
+                        J_PREVIEW_AA,
+                    );
+                    let _ = tx.send((result, revision));
+                });
+            }
+        }
+        ctx.request_repaint();
+    }
+
+    fn poll_j_preview_response(&mut self, ctx: &egui::Context) {
+        while let Ok((result, revision)) = self.rx_jpreview.try_recv() {
+            if result.cancelled {
+                self.j_preview_loading = false;
+                continue;
+            }
+            self.j_preview_loading = false;
+            // In Mandelbrot mode we send on every cursor move so results often arrive for an older
+            // revision. Keep the newest result we receive so we always have something to show.
+            let should_store = self.j_preview_texture.as_ref().map_or(true, |(_, r)| revision >= *r);
+            if !should_store {
+                continue;
+            }
+            let params = self.color_params();
+            let buffer = if let Some(ref aa) = result.aa_samples {
+                self.current_palette().colorize_aa(&result.iterations, aa, &params)
+            } else {
+                self.current_palette().colorize(&result.iterations, &params)
+            };
+            let image = egui::ColorImage::from_rgba_unmultiplied(
+                [buffer.width as usize, buffer.height as usize],
+                &buffer.pixels,
+            );
+            let handle = ctx.load_texture("j_preview", image, egui::TextureOptions::LINEAR);
+            self.j_preview_texture = Some((handle, revision));
             ctx.request_repaint();
         }
     }
@@ -1288,6 +1429,22 @@ impl MandelbRustApp {
                 self.needs_render = true;
             }
         }
+
+        // -- Phase 10.5: Left-click (Mandelbrot, J preview on) → load Julia at cursor c ------
+        if self.mode == FractalMode::Mandelbrot
+            && self.preferences.show_j_preview
+            && response.clicked()
+            && !ctx.input(|i| i.modifiers.shift)
+        {
+            if let Some(c) = self.cursor_complex {
+                self.julia_c = c;
+                self.mode = FractalMode::Julia;
+                self.push_history();
+                self.viewport = self.default_viewport();
+                self.bump_minimap_revision();
+                self.needs_render = true;
+            }
+        }
     }
 
     fn handle_keyboard(&mut self, ctx: &egui::Context) {
@@ -1381,20 +1538,11 @@ impl MandelbRustApp {
                 }
             }
 
-            // J: open Julia C Explorer (Phase 10). Grid request is sent after first draw (cols/rows from viewport).
+            // J: toggle J preview panel (Phase 10.5). Julia C Explorer is opened by clicking "Julia" in the bottom-left.
             if input.key_pressed(egui::Key::J) {
-                let was_julia = self.mode == FractalMode::Julia;
-                self.mode = FractalMode::Julia;
-                if !was_julia {
-                    if let Some(c) = self.cursor_complex {
-                        self.julia_c = c;
-                        self.bump_minimap_revision();
-                    }
-                    self.push_history();
-                    self.viewport = self.default_viewport();
-                    self.needs_render = true;
-                }
-                self.show_julia_c_explorer = true;
+                self.preferences.show_j_preview = !self.preferences.show_j_preview;
+                self.preferences.save();
+                self.bump_j_preview_revision();
             }
 
             // M: toggle minimap (Phase 9)
@@ -1525,7 +1673,27 @@ impl MandelbRustApp {
                     });
             });
 
-        // -- Bottom-right: minimap (Phase 9) ------------------------------------
+        // -- Bottom-right: J preview panel (Phase 10.5) above minimap, then minimap ---------
+        if self.preferences.show_j_preview {
+            let size = self.preferences.minimap_size.side_pixels() as f32;
+            let j_alpha = (hud_alpha as f32 * self.preferences.minimap_opacity.clamp(0.0, 1.0)).round() as u8;
+            let image_alpha = (255.0 * self.preferences.minimap_opacity.clamp(0.0, 1.0)).round() as u8;
+            // Show latest received texture (may be slightly stale in Mandelbrot when cursor is moving).
+            let texture = self.j_preview_texture.as_ref().map(|(h, _)| h);
+            j_preview::draw_j_preview_panel(
+                ctx,
+                j_preview::JPreviewDrawParams {
+                    size_px: size,
+                    panel_alpha: j_alpha,
+                    image_alpha,
+                    texture,
+                    loading: self.j_preview_loading,
+                    preview_viewport: self.j_preview_viewport(),
+                    julia_c: self.julia_c,
+                    is_mandelbrot_preview: self.mode == FractalMode::Julia,
+                },
+            );
+        }
         let show_minimap = self.preferences.show_minimap;
         if show_minimap {
             self.show_minimap_panel(ctx, hud_alpha);
@@ -1913,7 +2081,7 @@ impl MandelbRustApp {
                         ui.style_mut().visuals.override_text_color =
                             Some(egui::Color32::from_rgb(220, 220, 220));
 
-                        // Fractal mode selector.
+                        // Fractal mode selector. Clicking "Julia" opens the Julia C Explorer (Phase 10.5); mode switches to Julia only when a cell is picked.
                         let old_mode = self.mode;
                         ui.horizontal(|ui| {
                             ui.label("Fractal:");
@@ -1922,7 +2090,12 @@ impl MandelbRustApp {
                                 FractalMode::Mandelbrot,
                                 "Mandelbrot",
                             );
-                            ui.selectable_value(&mut self.mode, FractalMode::Julia, "Julia");
+                            if ui
+                                .selectable_label(self.mode == FractalMode::Julia, "Julia")
+                                .clicked()
+                            {
+                                self.show_julia_c_explorer = true;
+                            }
                         });
                         mode_changed = self.mode != old_mode;
 
@@ -2160,6 +2333,25 @@ impl MandelbRustApp {
                 {
                     self.preferences.save();
                 }
+                ui.add_space(6.0);
+                ui.heading("J preview panel (Phase 10.5)");
+                if ui
+                    .checkbox(&mut self.preferences.show_j_preview, "Show J preview panel")
+                    .changed()
+                {
+                    self.preferences.save();
+                    self.bump_j_preview_revision();
+                }
+                if ui
+                    .add(egui::Slider::new(&mut self.preferences.julia_preview_iterations, 50..=1000)
+                        .text("Julia preview iterations")
+                        .logarithmic(true))
+                    .changed()
+                {
+                    self.preferences.save();
+                    self.bump_j_preview_revision();
+                }
+                ui.label("(Mandelbrot mode: live Julia at cursor; default 250)");
                 if ui
                     .add(egui::Slider::new(&mut self.preferences.hud_panel_opacity, 0.0..=1.0)
                         .text("HUD panel opacity"))
@@ -2241,7 +2433,7 @@ impl MandelbRustApp {
                             ("M", "Toggle minimap"),
                             ("S", "Save bookmark"),
                             ("B", "Bookmark explorer"),
-                            ("J", "Julia C Explorer (pick c from grid)"),
+                            ("J", "Toggle J preview panel (above minimap)"),
                             ("C", "Toggle crosshair"),
                             ("A", "Cycle anti-aliasing (Off / 2x2 / 4x4)"),
                             ("R", "Reset view"),
@@ -2269,7 +2461,9 @@ impl MandelbRustApp {
                             ("Left drag", "Pan"),
                             ("Right drag", "Selection-box zoom"),
                             ("Scroll wheel", "Zoom at cursor"),
-                            ("Shift+Click", "Pick Julia c value"),
+                            ("Click Julia (bottom-left)", "Open Julia C Explorer (pick c)"),
+                            ("Shift+Click", "Pick Julia c value (Julia mode)"),
+                            ("Left-click (Mandelbrot, J on)", "Load Julia at cursor c"),
                         ];
                         for &(k, d) in actions {
                             ui.label(egui::RichText::new(k).strong().color(egui::Color32::WHITE));
@@ -3109,8 +3303,12 @@ impl eframe::App for MandelbRustApp {
             self.start_julia_grid_request();
         }
         self.poll_minimap_response(ctx);
+        self.poll_j_preview_response(ctx);
         if self.show_hud && !self.show_julia_c_explorer && self.preferences.show_minimap {
             self.request_minimap_if_invalid(ctx);
+        }
+        if self.show_hud && !self.show_julia_c_explorer && self.preferences.show_j_preview {
+            self.request_j_preview_if_needed(ctx);
         }
 
         // Central panel: fractal canvas or Julia C Explorer grid.
