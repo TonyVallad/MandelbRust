@@ -89,7 +89,37 @@ For Julia sets, replace the current “cursor position = C” behaviour with a g
 
 ---
 
-## 3. Display and color settings (MSZP-inspired)
+## 3. J preview panel and Julia C Explorer access
+
+### Overview
+Change how the Julia C Explorer is opened (by **clicking “Julia”** in the bottom-left fractal selector instead of the J key). Repurpose the **J** key to toggle a **preview panel** above the minimap: in Mandelbrot mode it shows a live Julia preview at the cursor (with left-click to load Julia at that c); in Julia mode it shows the Mandelbrot set with a crosshair at the current c. Both previews use 4×4 AA.
+
+### Behaviour
+
+- **Opening the Julia C Explorer (Option B)**
+  - **Clicking “Julia”** in the bottom-left fractal mode selector (Mandelbrot | Julia) **opens the Julia C Explorer** (grid of small Julia set previews). The app does **not** switch to Julia mode yet.
+  - When the user **picks a cell** in the grid, set the Julia constant **c** to that cell’s coordinates, **switch to Julia mode**, and close the explorer. The user is then viewing that Julia set.
+
+- **J key — toggle preview panel**
+  - **J** toggles the visibility of a **preview panel** drawn **above the minimap**.
+  - **Gap:** The space between this panel and the minimap is the **same size as the margin between HUD elements and the viewport** (e.g. 8 px).
+  - **Appearance:** The panel has the **same size, shape, and opacity** as the minimap (same size setting, square, same HUD panel opacity). Same 1 px white border (75% opacity), no black margin, inset from the viewport edge.
+
+- **J preview in Mandelbrot mode (Julia preview)**
+  - Content: **Julia set** for **c = complex coordinate under the cursor**. Updates **as the cursor moves**.
+  - **Iterations:** **250 by default**; must be **configurable in Settings** (e.g. “Julia preview iterations”).
+  - **4×4 anti-aliasing** is applied to this preview.
+  - **Left-click** on the main canvas (no drag) → set **c** to the clicked pixel’s complex coordinate and **switch to Julia mode** (i.e. “load” the Julia set that would be previewed at that pixel). Pan (left-drag) is unchanged.
+
+- **J preview in Julia mode (Mandelbrot preview)**
+  - Content: **Mandelbrot set** (default view, same as minimap) with a **white vertical and horizontal line** (crosshair) passing through the point that corresponds to the **current Julia c** (where that c lies in the Mandelbrot set).
+  - This preview **does not** update on cursor move. It updates only when **c** changes (Re(c)/Im(c) in panel, Shift+Click, or after loading from Julia preview) or **display/color settings** change.
+  - **Iterations:** Use the **same iteration count as the minimap** (minimap iterations setting).
+  - **4×4 anti-aliasing** is applied.
+
+---
+
+## 4. Display and color settings (MSZP-inspired)
 
 ### Overview
 Extend display and color options to support named color profiles, palette modes (cycles vs cycle length), start-from black/white, and optional log-log smoothing. The settings model must be designed so that new display/color features can be added later without reworking the architecture. Access to all of this is via a single **Display/color settings** entry point (replacing the current palette icon).

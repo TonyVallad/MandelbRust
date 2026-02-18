@@ -87,6 +87,7 @@ MandelbRust uses a continuous camera model over the complex plane.
 ### Mouse Controls
 - **Scroll wheel**: zoom in / out centered on cursor
 - **Left-click + drag**: pan the viewport
+- **Left-click** (Mandelbrot mode, J preview panel on): set Julia constant to cursor position and switch to Julia mode (“load” the previewed Julia set)
 - **Right-click + drag**: selection rectangle — draws a cyan rectangle; on release, the viewport zooms to fit that region
 - **Shift + Click** (Julia mode): set Julia constant `c` from the cursor position
 
@@ -103,6 +104,7 @@ MandelbRust uses a continuous camera model over the complex plane.
 | **`A`** | Cycle anti-aliasing level (Off → 2×2 → 4×4 → Off) |
 | **`S`** | Save bookmark (or update/save-new if currently viewing a bookmark) |
 | **`B`** | Toggle bookmark explorer |
+| **`J`** | Toggle J preview panel (above minimap): in Mandelbrot, live Julia preview at cursor; in Julia, Mandelbrot preview with crosshair at c |
 | **`Backspace`** | Navigate view history (back) |
 | **`Shift+Backspace`** | Navigate view history (forward) |
 
@@ -229,9 +231,9 @@ The HUD is distributed across several screen areas for minimal visual intrusion.
 | **Top-left** | Read-only viewport info: fractal mode, center coordinates, zoom level, iteration count, palette name, precision warning |
 | **Top-right toolbar** | Icon bar using **Material Symbols** (embedded via `egui_material_icons`): arrow_back / arrow_forward (navigate back / forward), restart_alt (reset view), palette (palette picker popup), deblur (cycle anti-aliasing), gradient (smooth coloring), bookmark_add (save bookmark), bookmarks (open bookmark explorer), help_outline (controls & shortcuts), settings (settings — always last). Icons are evenly spaced in a fixed-width grid. Icons that represent a toggleable state (AA, smooth coloring, bookmarks explorer) are **dimmed when off** and bright when active. **Style:** toolbar stays exactly as it is (no border/opacity changes from the global box styling). |
 | **Top-right** (below toolbar) | Cursor complex coordinates (visible only when crosshair is enabled, no background) |
-| **Bottom-left** | Fractal parameters panel: fractal mode selector (Mandelbrot / Julia). In Julia mode, **Re(c)** and **Im(c)** are editable via DragValue (range ±2, 10 decimal places); Shift+Click on the main view to pick c from cursor. Iteration slider with x10 / /10 buttons, escape radius slider, adaptive iterations checkbox. |
+| **Bottom-left** | Fractal parameters panel: fractal mode selector (Mandelbrot / Julia). **Clicking “Julia”** opens the Julia C Explorer (grid); pick a cell to set c and switch to Julia mode. In Julia mode, **Re(c)** and **Im(c)** editable via DragValue (range ±2, 10 decimal places); Shift+Click on the main view to pick c. Iteration slider with x10 / /10 buttons, escape radius slider, adaptive iterations checkbox. |
 | **Bottom-centre** | Render stats: phase, timing, tile counts, AA status |
-| **Bottom-right** | Minimap (when enabled): zoomed-out overview of the current fractal (Julia set in Julia mode, default Mandelbrot view in Mandelbrot mode). Cyan viewport rectangle; white crosshairs from minimap edges to the rectangle only; 1px white border (75% opacity), no black margin; inset from corner; rendered with 4×4 AA. |
+| **Bottom-right** | **J preview panel** (when **J** is on): above the minimap, same gap as HUD margin; same size, shape, opacity as minimap; 4×4 AA. In Mandelbrot mode: live Julia preview at cursor c (iterations configurable, 250 default); left-click loads Julia at that c. In Julia mode: Mandelbrot preview with white crosshair at current c (uses minimap iterations); updates when c or display/color change. **Minimap** (when enabled): zoomed-out overview of the current fractal. Cyan viewport rectangle; white crosshairs outside the rect only; 1px white border (75% opacity), no black margin; inset; 4×4 AA. |
 
 **Box styling (all HUD boxes except the toolbar):** Same **margins** as the top boxes (top-left and top-right area). **Rounded corners** like the top-left and bottom-left panels. **No border** (like the bottom-left), except the **minimap** has a 1px white border at 75% opacity with no black margin outside it. **Background opacity** 65% by default, configurable in the settings menu. The **toolbar is excluded** from these styling rules.
 
@@ -299,7 +301,7 @@ This migration runs once and is transparent to the user.
 - The save dialog offers: name input (auto-generated if blank, e.g. `Mandelbrot_000021`), label toggle buttons for all known labels, new-label input with `/`-nesting support, and smart default labels (fractal type, zoom depth, detail level).
 
 #### Fractal Parameters Panel (Bottom-left)
-- **Fractal mode selector** — switch between Mandelbrot and Julia sets
+- **Fractal mode selector** — switch between Mandelbrot and Julia sets. **Clicking “Julia”** opens the **Julia C Explorer** (grid of Julia previews); picking a cell sets c and switches to Julia mode.
 - **Julia C (Julia mode only)** — **Re(c)** and **Im(c)** editable via DragValue (range ±2, 10 decimals); Shift+Click on the viewport to pick c from cursor
 - **Iteration slider** for quick adjustments within the current range
 - **x10 / /10 magnitude buttons** below the slider for rapidly scaling the iteration count by orders of magnitude
@@ -387,7 +389,8 @@ The following features are planned and specified in [**Features_to_add.md**](Fea
 | Feature | Summary |
 |--------|--------|
 | **Minimap** | In the **bottom-right** corner of the viewport. **Square (1:1)** aspect ratio; complex-plane range **-2 to 2** on both axes by default, **zoom configurable in settings**. Zoomed-out overview (500 iterations default, configurable), cached until image-affecting parameters change. Cyan viewport rectangle with white crosshair lines (50% opacity, configurable). Toggle with **M** key or new toolbar icon; hidden when HUD is off. Size (small / medium / large) configurable. Uses same box styling as other HUD boxes (margins, rounded corners, no border, 65% opacity default). |
-| **Julia C Explorer** | Replace “Shift+Click = C” with a **grid of small Julia set previews**. Each cell maps viewport position to C; clicking a cell sets the Julia constant. Square previews; coordinate range −2 to 2 by default, configurable from the explorer. Show C coordinates on hover. Color settings editable in the grid view. Default 100 max iterations (configurable). Grid size configurable. |
+| **Julia C Explorer** | **Opened by clicking "Julia"** in the bottom-left (Phase 10.5). Grid of small Julia set previews; pick a cell to set c and switch to Julia mode. Square previews; coordinate range −2 to 2 by default, configurable from the explorer. Show C coordinates on hover. Color settings editable in the grid view. Default 100 max iterations (configurable). Grid size configurable. |
+| **J preview panel** | **J** toggles a panel above the minimap (Phase 10.5). In Mandelbrot: live Julia preview at cursor (250 iter default, configurable); left-click loads Julia at that c. In Julia: Mandelbrot preview with white crosshair at c (uses minimap iterations). Same size/opacity as minimap; gap = HUD margin; 4×4 AA. |
 | **Display/color settings (MSZP-inspired)** | **Icon:** Replace the current palette icon with a **Display/color settings** icon that opens a panel to edit all display/color options and to select, save, and load profiles. **Profiles:** One file per profile in a **color profiles** folder at the program root (easy to share). **Bookmarks:** Save **all display/color settings individually** in each bookmark (full snapshot, not just profile name), so one-off tweaks are preserved. **Palette mode:** By number of cycles or by cycle length (same palette, different iteration→position mapping). **Start from black/white:** MSZP-style fade for the first few iterations, with **low_threshold_start** and **low_threshold_end**. **Log-log:** Toggle for continuous iteration (smooth) vs integer (banded); same as current smooth-coloring toggle, to be part of profiles and bookmarks. **Architecture:** Single coherent display/color settings model (serializable for profiles and bookmarks, easy to extend). |
 
 Details, edge cases, and exact behaviour are in [**Features_to_add.md**](Features_to_add.md).

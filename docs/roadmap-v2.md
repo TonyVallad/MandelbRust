@@ -2,7 +2,7 @@
 
 Phases 0–10 are complete. This roadmap covers everything from Phase 11 onward.
 
-**Next development focus:** Phase 11 (Image Export) and beyond. Each phase is written so an AI agent can execute the tasks in order without ambiguity. Full behaviour and edge cases are specified in [Features_to_add.md](Features_to_add.md); the roadmap breaks implementation into digestible steps.
+**Next development focus:** **Phase 10.5 — J preview panel and Julia C Explorer UX** (see below). After that, Phase 11 (Image Export) and beyond. Each phase is written so an AI agent can execute the tasks in order without ambiguity. Full behaviour and edge cases are specified in [Features_to_add.md](Features_to_add.md); the roadmap breaks implementation into digestible steps.
 
 Each phase is a self-contained unit of work that produces a testable, working state.
 
@@ -127,7 +127,7 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 
 **Objective:** Introduce a single, serializable display/color settings model; replace the palette icon with a Display/color settings panel; add color profiles (one file per profile in `color_profiles/`); extend bookmarks to store the full display/color snapshot.
 
-**Reference:** [Features_to_add.md](Features_to_add.md) §3; [overview.md](overview.md) §9, §10, §13 (Planned features).
+**Reference:** [Features_to_add.md](Features_to_add.md) §4 (Display and color settings); [overview.md](overview.md) §9, §10, §13 (Planned features).
 
 ### Task 8.1 — Define `DisplayColorSettings` and use it in app state ✅
 
@@ -296,7 +296,7 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 
 **Reference:** [Features_to_add.md](Features_to_add.md) §2.
 
-**Current behaviour (bottom-left panel):** In Julia mode, **Re(c)** and **Im(c)** are editable via a single DragValue each (range ±2, 10 decimal places). Changes trigger re-render and minimap update only (no history). Shift+Click on the main view and the Julia C Explorer (J key) remain available to set c.
+**Current behaviour (bottom-left panel):** In Julia mode, **Re(c)** and **Im(c)** are editable via a single DragValue each (range ±2, 10 decimal places). Changes trigger re-render and minimap update only (no history). Shift+Click on the main view to pick c. **After Phase 10.5:** Julia C Explorer will be opened by **clicking “Julia”** in the bottom-left (not J); J will toggle the preview panel instead.
 
 ### Task 10.1 — Grid of small Julia previews (squares, −2..2 default)
 
@@ -340,6 +340,74 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 - [x] Click cell to set C and close explorer; hover shows C coordinates; display/color settings changeable from explorer and apply to grid and session
 - [x] Grid size and default iterations (100) configurable in settings
 - [x] Behaviour matches [Features_to_add.md](Features_to_add.md) §2
+
+---
+
+## Phase 10.5 — J preview panel and Julia C Explorer UX *(next to implement)*
+
+**Objective:** Change how the Julia C Explorer is opened (click “Julia” in the bottom-left instead of J); add a J-key-toggled preview panel above the minimap that shows a live Julia preview in Mandelbrot mode (with left-click to load Julia at cursor c) or a Mandelbrot preview with crosshair at c in Julia mode. All previews use 4×4 AA.
+
+**Reference:** [Features_to_add.md](Features_to_add.md) §3 (J preview panel and Julia C Explorer access).
+
+### Task 10.5.1 — Open Julia C Explorer by clicking “Julia”
+
+**Files:** `mandelbrust-app/src/main.rs` (fractal parameters panel, bottom-left)
+
+1. When the user **clicks the “Julia”** option in the fractal mode selector (Mandelbrot | Julia), **open the Julia C Explorer** (grid of small Julia previews) instead of immediately switching mode.
+2. When the user **picks a cell** in the grid, set `julia_c` to that cell’s coordinates, **switch to Julia mode**, and close the explorer.
+3. Remove opening the Julia C Explorer from the **J** key (J will be repurposed for the preview panel).
+
+**Verify:** Clicking “Julia” opens the grid; picking a cell sets c and switches to Julia mode. J no longer opens the grid.
+
+---
+
+### Task 10.5.2 — J key: toggle preview panel (Mandelbrot → Julia preview)
+
+**Files:** `mandelbrust-app/src/main.rs`, preferences
+
+1. **J** key **toggles** a “J preview panel” (state in app + persisted in preferences, e.g. `show_j_preview: bool`).
+2. Panel is drawn **above the minimap**, with a **gap equal to the HUD margin** (same as margin between HUD elements and viewport) between the panel and the minimap.
+3. **When in Mandelbrot mode and panel is on:** the panel shows a **Julia set** for **c = complex coordinate under the cursor**. Content **updates as the cursor moves**. Use **250 iterations by default**; add a setting **“Julia preview iterations”** in Settings (default 250). Render with **4×4 AA**.
+4. Panel **size, shape, and opacity** match the minimap (same size option, square, same HUD panel opacity). Same 1px white border (75% opacity), no black margin, inset from corner.
+5. **Left-click** on the main canvas (Mandelbrot mode, J preview on, no drag) → set `julia_c` to the clicked pixel’s complex coordinate and **switch to Julia mode** (so the user “loads” the Julia set they were previewing). Do not trigger on drag (only on click).
+
+**Verify:** In Mandelbrot mode, J toggles the panel; panel shows live Julia at cursor; left-click loads Julia at that c. Panel matches minimap size/opacity; gap = HUD margin. 4×4 AA applied. Setting “Julia preview iterations” (250 default) in Settings affects the Julia preview.
+
+---
+
+### Task 10.5.3 — J key: toggle preview panel (Julia → Mandelbrot preview)
+
+**Files:** `mandelbrust-app/src/main.rs`
+
+1. **When in Julia mode and J preview panel is on:** the panel shows the **Mandelbrot set** (default view, same as minimap) with a **white vertical and horizontal line** (crosshair) passing through the point that corresponds to the **current Julia c** (i.e. where that c lies in the Mandelbrot set).
+2. This preview **does not** update on cursor move. It updates only when **c** changes (Re(c)/Im(c) in panel, Shift+Click, or after loading from Julia preview) or **display/color settings** change.
+3. Use the **same iteration count as the minimap** (minimap iterations setting). Render with **4×4 AA**.
+4. Same placement (above minimap, gap = HUD margin), size, shape, opacity, and border as in Task 10.5.2.
+
+**Verify:** In Julia mode, J toggles the panel; panel shows Mandelbrot with crosshair at c; panel updates only when c or display/color change. Uses minimap iterations and 4×4 AA.
+
+---
+
+### Task 10.5.4 — Documentation and shortcuts
+
+**Files:** `README.md`, `docs/overview.md`, in-app controls/shortcuts help
+
+1. Update all references to “J = Julia C Explorer” to “J = toggle J preview panel” and “Click Julia = open Julia C Explorer”.
+2. Document left-click (Mandelbrot, J preview on) = load Julia at cursor c.
+3. Ensure the in-app controls/shortcuts window lists the new J behaviour and Julia-click behaviour.
+
+**Verify:** README, overview, and in-app help describe the new behaviour correctly.
+
+---
+
+### Deliverables — Phase 10.5
+
+- [ ] Clicking “Julia” in the bottom-left opens the Julia C Explorer; picking a cell sets c and switches to Julia mode
+- [ ] J toggles the J preview panel above the minimap (gap = HUD margin; same size, shape, opacity as minimap; 4×4 AA)
+- [ ] In Mandelbrot mode: panel shows live Julia at cursor (250 iter default, configurable); left-click loads Julia at that c
+- [ ] In Julia mode: panel shows Mandelbrot with white crosshair at c; updates when c or display/color change; uses minimap iterations
+- [ ] Settings: “Julia preview iterations” (default 250)
+- [ ] Documentation and shortcuts updated
 
 ---
 
@@ -980,7 +1048,7 @@ These are not scheduled but tracked as future possibilities:
 - **Buddhabrot / Nebulabrot** rendering mode
 - **Orbit trap coloring** (Pickover stalks, circles, crosses)
 - **Palette editor** — custom gradient creation (Display/color profiles and panel from Phase 8 provide a foundation; editor would extend the palette definition within that model)
-- **Fade to black** — MSZP-style fade near max iterations (specified in [Features_to_add.md](Features_to_add.md) §3; fits in DisplayColorSettings when implemented)
+- **Fade to black** — MSZP-style fade near max iterations (specified in [Features_to_add.md](Features_to_add.md) §4; fits in DisplayColorSettings when implemented)
 - **GPU perturbation** — deep zoom on the GPU using emulated double precision
 - **WebAssembly build** — run MandelbRust in the browser via wasm
 - **Plugin system** — user-defined fractal formulas

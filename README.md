@@ -16,7 +16,7 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 ## Current Features
 
 - **Real-time exploration** — smooth pan and zoom with mouse, keyboard, and Google Maps-style controls
-- **Mandelbrot & Julia sets** — switch modes via the fractal parameters panel. In Julia mode, edit **Re(c)** and **Im(c)** in the bottom-left panel (DragValue, range ±2, 10 decimals); **J** opens the Julia C Explorer (grid of previews; click a cell to set c); or Shift+Click on the main view to pick from cursor
+- **Mandelbrot & Julia sets** — switch modes via the fractal parameters panel. **Click "Julia"** in the bottom-left to open the **Julia C Explorer** (grid of previews); pick a cell to set c and switch to Julia mode. In Julia mode, edit **Re(c)** and **Im(c)** in the bottom-left (DragValue, ±2, 10 decimals) or Shift+Click on the main view to pick c. **J** toggles a **preview panel** above the minimap: in Mandelbrot mode, live Julia preview at cursor (left-click to load Julia at that c); in Julia mode, Mandelbrot preview with crosshair at c. Preview uses same size/opacity as minimap, 4×4 AA; Julia preview iterations configurable (250 default)
 - **Multithreaded tiled renderer** — parallel CPU rendering via Rayon with automatic load balancing
 - **Progressive rendering** — instant low-resolution preview on a background thread, asynchronous refinement to full quality
 - **Computation optimizations** — cardioid/bulb checks, periodicity detection (Brent's), real-axis symmetry, border tracing
@@ -36,6 +36,7 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 - **Selection-box zoom** — right-click drag to zoom into a drawn rectangle
 - **Crosshair & center marker** — toggle for precise navigation
 - **Minimap** — overview of the current fractal (Julia set in Julia mode, default Mandelbrot view in Mandelbrot mode) with cyan viewport rectangle; crosshairs only outside the rect; 1px white border (75% opacity), no black margin; inset from corner like other HUD panels; rendered with 4×4 AA; toggle via toolbar or **M**; configurable size and opacity in Settings
+- **J preview panel** — **J** toggles a panel above the minimap (same size, shape, opacity; gap = HUD margin; 4×4 AA). In **Mandelbrot** mode: live Julia preview at cursor c (250 iterations default, configurable); left-click loads Julia at that c. In **Julia** mode: Mandelbrot preview with white crosshair at current c (uses minimap iterations); updates when c or display/color change
 - **Session persistence** — full display/color settings (palette, smooth coloring, palette mode, etc.) and last view are saved on exit and restored on startup
 
 ## Bookmark Explorer
@@ -74,6 +75,7 @@ The minimap shows a zoomed-out overview of the **current fractal**: in Julia mod
 |---|---|
 | Scroll wheel | Zoom at cursor |
 | Left-drag | Pan |
+| Left-click (Mandelbrot, J preview on) | Load Julia at cursor c (switch to Julia mode) |
 | Right-drag | Selection rectangle zoom |
 | Shift + Click | Set Julia constant (in Julia mode) |
 
@@ -96,7 +98,7 @@ Right-click and drag to draw a selection rectangle, then release to zoom into th
 | `S` | Save / update bookmark |
 | `B` | Toggle bookmark explorer |
 | `M` | Toggle minimap |
-| `J` | Julia C Explorer (grid of Julia previews; click to set c) |
+| `J` | Toggle preview panel above minimap (Julia preview in Mandelbrot / Mandelbrot preview at c in Julia) |
 | `Backspace` | View history back |
 | `Shift+Backspace` | View history forward |
 | `Escape` | Close dialogs / help / settings, cancel render |
