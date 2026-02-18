@@ -16,7 +16,7 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 ## Current Features
 
 - **Real-time exploration** — smooth pan and zoom with mouse, keyboard, and Google Maps-style controls
-- **Mandelbrot & Julia sets** — switch modes via the fractal parameters panel; **J** opens the Julia C Explorer (grid of previews; click a cell to set the Julia constant) or Shift+Click on the main view to pick from cursor
+- **Mandelbrot & Julia sets** — switch modes via the fractal parameters panel. In Julia mode, edit **Re(c)** and **Im(c)** in the bottom-left panel (DragValue, range ±2, 10 decimals); **J** opens the Julia C Explorer (grid of previews; click a cell to set c); or Shift+Click on the main view to pick from cursor
 - **Multithreaded tiled renderer** — parallel CPU rendering via Rayon with automatic load balancing
 - **Progressive rendering** — instant low-resolution preview on a background thread, asynchronous refinement to full quality
 - **Computation optimizations** — cardioid/bulb checks, periodicity detection (Brent's), real-axis symmetry, border tracing
@@ -35,7 +35,7 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 - **Controls & shortcuts window** — lists all keyboard, mouse, and toolbar actions in a clean reference panel
 - **Selection-box zoom** — right-click drag to zoom into a drawn rectangle
 - **Crosshair & center marker** — toggle for precise navigation
-- **Minimap** — overview of the fractal with viewport indicator (toggle via toolbar or **M**); configurable size and opacity in Settings
+- **Minimap** — overview of the current fractal (Julia set in Julia mode, default Mandelbrot view in Mandelbrot mode) with cyan viewport rectangle; crosshairs only outside the rect; 1px white border (75% opacity), no black margin; inset from corner like other HUD panels; rendered with 4×4 AA; toggle via toolbar or **M**; configurable size and opacity in Settings
 - **Session persistence** — full display/color settings (palette, smooth coloring, palette mode, etc.) and last view are saved on exit and restored on startup
 
 ## Bookmark Explorer
@@ -64,7 +64,7 @@ Five built-in palettes with smooth coloring. The palette picker popup lets you p
   <img src="docs/img/Screenshot_Minimap.png" alt="Minimap with viewport indicator" width="400">
 </p>
 
-The minimap shows an overview of the current fractal; the cyan rectangle is your current viewport. Toggle it from the toolbar (map icon) or with **M**. In Settings you can choose size (Small / Medium / Large) and opacity (default 75%).
+The minimap shows a zoomed-out overview of the **current fractal**: in Julia mode it shows the Julia set for the current c; in Mandelbrot mode it shows the default Mandelbrot view. The **cyan rectangle** is your current viewport; white crosshair lines run from the minimap edges to the rectangle (not inside it). The minimap has a 1px white border (75% opacity) with no black margin, is inset from the bottom-right corner like other HUD panels, and is rendered with 4×4 anti-aliasing. Toggle it from the toolbar (map icon) or with **M**. In Settings you can choose size (Small / Medium / Large) and opacity (default 75%).
 
 ## Controls
 

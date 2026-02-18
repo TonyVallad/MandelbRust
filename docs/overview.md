@@ -60,7 +60,7 @@ Handles all pixel computation, coloring, and anti-aliasing. Depends on `mandelbr
 
 | Module | Contents |
 |---|---|
-| `renderer.rs` | `render()` — the main rendering pipeline. Tiled parallel rendering via Rayon, border tracing, symmetry mirroring. `RenderCancel` for generation-based cancellation with progress tracking. Returns `RenderResult` |
+| `renderer.rs` | `render()` — the main rendering pipeline. Tiled parallel rendering via Rayon, border tracing. **Real-axis symmetry** is used only for Mandelbrot (parameter `use_real_axis_symmetry`); Julia renders do not use symmetry to avoid incorrect mirroring. `RenderCancel` for generation-based cancellation with progress tracking. Returns `RenderResult` |
 | `tile.rs` | `Tile` abstraction (64×64 pixels), `build_tile_grid()`, symmetry classification (`TileKind::Normal`, `Primary`, `Mirror`) |
 | `buffer.rs` | `RenderBuffer` — RGBA pixel buffer with tile blitting and mirroring |
 | `iteration_buffer.rs` | `IterationBuffer` — stores `IterationResult` per pixel, supports tile blitting, mirroring, and `shift()` for pan optimization |
@@ -142,7 +142,7 @@ The iteration engine applies several techniques to minimize unnecessary work:
 - **Periodicity detection** (Brent's algorithm) — detects orbital cycles to exit early for interior points, avoiding full `max_iter` cost. The check is deferred for the first 32 iterations and runs every 4th iteration thereafter, reducing branch overhead in the hot loop
 - **Cached escape radius** — `escape_radius²` is precomputed and cached in `FractalParams`, avoiding a redundant multiplication on every `iterate()` call
 - **Deferred smooth formula** — the iteration loop stores only raw `(n, |z|²)` at escape; the expensive `ln(ln(...))` smooth coloring formula is computed once during the coloring pass, not inside the hot loop
-- **Real-axis symmetry** — for the Mandelbrot set, only the top half is computed when the viewport straddles `im = 0`; results are mirrored for the bottom half. Mirror tile lookup uses a `HashMap` for O(1) matching
+- **Real-axis symmetry** — for the Mandelbrot set only (not Julia), when the viewport is centred on `im = 0`, only the top half is computed and results are mirrored for the bottom half. Julia sets are not symmetric about the real axis, so the renderer takes a `use_real_axis_symmetry` flag and disables symmetry for Julia. Mirror tile lookup uses a `HashMap` for O(1) matching
 - **Parallel colorization** — `colorize()` and `colorize_aa()` use Rayon's `par_chunks_mut` to distribute pixel coloring across all CPU cores
 
 ### Precision Limits
@@ -219,7 +219,7 @@ Multithreading is a **core requirement**, not an optimization.
 - **Smooth coloring** using normalized iteration values: `ν = n + 1 − log₂(ln(|zₙ|))`
 - Palette selection is **instantaneous** — the `IterationBuffer` is stored separately from the pixel buffer, so switching palettes re-colorizes without re-rendering
 - **Palette popup picker** — clicking the palette icon in the toolbar opens a popup showing all palettes with color gradient preview swatches; clicking a palette selects it immediately
-- Architecture allows future palette editor / histogram coloring. **Planned:** A **Display/color settings** panel (replacing the palette icon) with full control over palette mode (cycles vs cycle length), start-from black/white, log-log/smooth toggle, and **color profiles** (one file per profile in a `color_profiles/` folder). See **§13 Planned features** and `Features_to_add.md`.
+- Architecture allows future palette editor / histogram coloring. **Planned:** A **Display/color settings** panel (replacing the palette icon) with full control over palette mode (cycles vs cycle length), start-from black/white, log-log/smooth toggle, and **color profiles** (one file per profile in a `color_profiles/` folder). See **§13 Planned features** and [Features_to_add.md](Features_to_add.md).
 
 ### HUD Layout
 The HUD is distributed across several screen areas for minimal visual intrusion. Pressing **H** hides everything; all overlays, toolbar, panels, and floating windows disappear together.
@@ -229,11 +229,11 @@ The HUD is distributed across several screen areas for minimal visual intrusion.
 | **Top-left** | Read-only viewport info: fractal mode, center coordinates, zoom level, iteration count, palette name, precision warning |
 | **Top-right toolbar** | Icon bar using **Material Symbols** (embedded via `egui_material_icons`): arrow_back / arrow_forward (navigate back / forward), restart_alt (reset view), palette (palette picker popup), deblur (cycle anti-aliasing), gradient (smooth coloring), bookmark_add (save bookmark), bookmarks (open bookmark explorer), help_outline (controls & shortcuts), settings (settings — always last). Icons are evenly spaced in a fixed-width grid. Icons that represent a toggleable state (AA, smooth coloring, bookmarks explorer) are **dimmed when off** and bright when active. **Style:** toolbar stays exactly as it is (no border/opacity changes from the global box styling). |
 | **Top-right** (below toolbar) | Cursor complex coordinates (visible only when crosshair is enabled, no background) |
-| **Bottom-left** | Fractal parameters panel: fractal mode selector (Mandelbrot / Julia), Julia `c` value, iteration slider with x10 / /10 buttons, escape radius slider, adaptive iterations checkbox |
+| **Bottom-left** | Fractal parameters panel: fractal mode selector (Mandelbrot / Julia). In Julia mode, **Re(c)** and **Im(c)** are editable via DragValue (range ±2, 10 decimal places); Shift+Click on the main view to pick c from cursor. Iteration slider with x10 / /10 buttons, escape radius slider, adaptive iterations checkbox. |
 | **Bottom-centre** | Render stats: phase, timing, tile counts, AA status |
-| **Bottom-right** | Minimap (when enabled; see §13 Planned features). Zoomed-out overview with viewport indicator and crosshair. |
+| **Bottom-right** | Minimap (when enabled): zoomed-out overview of the current fractal (Julia set in Julia mode, default Mandelbrot view in Mandelbrot mode). Cyan viewport rectangle; white crosshairs from minimap edges to the rectangle only; 1px white border (75% opacity), no black margin; inset from corner; rendered with 4×4 AA. |
 
-**Box styling (all HUD boxes except the toolbar):** Same **margins** as the top boxes (top-left and top-right area). **Rounded corners** like the top-left and bottom-left panels. **No border** (like the current bottom-left). **Background opacity** 65% by default, configurable in the settings menu. The **toolbar is excluded** from these styling rules.
+**Box styling (all HUD boxes except the toolbar):** Same **margins** as the top boxes (top-left and top-right area). **Rounded corners** like the top-left and bottom-left panels. **No border** (like the bottom-left), except the **minimap** has a 1px white border at 75% opacity with no black margin outside it. **Background opacity** 65% by default, configurable in the settings menu. The **toolbar is excluded** from these styling rules.
 
 A **progress bar** appears at the top of the viewport during rendering and AA passes.
 
@@ -261,7 +261,7 @@ Bookmarks capture the **entire exploration state**, including:
 - User metadata: name, hierarchical labels, notes
 - Base64-encoded PNG thumbnail (160px max width, auto-generated on save)
 
-**Planned:** Bookmarks will store **all display/color settings individually** (palette, palette mode, cycles, start from black/white, log-log, etc.), not only a profile reference, so one-off tweaks are preserved. See **§13 Planned features** and `Features_to_add.md`.
+Bookmarks store a **full display/color snapshot** (`DisplayColorSettings`: palette, palette mode, cycles, start from black/white, thresholds, smooth coloring). Palette mode is serialized as struct variants (`ByCycles { n }`, `ByCycleLength { len }`) for JSON compatibility.
 
 #### Storage — One File Per Bookmark
 
@@ -300,7 +300,7 @@ This migration runs once and is transparent to the user.
 
 #### Fractal Parameters Panel (Bottom-left)
 - **Fractal mode selector** — switch between Mandelbrot and Julia sets
-- **Julia `c` display** — shows current Julia constant; Shift+Click to pick from the viewport
+- **Julia C (Julia mode only)** — **Re(c)** and **Im(c)** editable via DragValue (range ±2, 10 decimals); Shift+Click on the viewport to pick c from cursor
 - **Iteration slider** for quick adjustments within the current range
 - **x10 / /10 magnitude buttons** below the slider for rapidly scaling the iteration count by orders of magnitude
 - **Escape radius slider** for adjusting the bailout radius
@@ -315,7 +315,7 @@ User preferences are accessible via the **⚙** icon in the toolbar (always the 
 
 - **Restore last view on startup** — captures and restores fractal mode, viewport, palette, and AA level
 - **Bookmarks folder** — text field with **Browse…** (native folder picker via `rfd`), **Apply**, and **Reset** buttons. The chosen path is persisted across sessions.
-- **Planned (see Features_to_add.md):** **HUD panel opacity** — single setting for all HUD boxes (65% default, configurable). Minimap options: size (small/medium/large), zoom (complex-plane range, default -2..2), default iteration count (500), crosshair line opacity (50% default).
+- **Planned (see [Features_to_add.md](Features_to_add.md)):** **HUD panel opacity** — single setting for all HUD boxes (65% default, configurable). Minimap options: size (small/medium/large), zoom (complex-plane range, default -2..2), default iteration count (500), crosshair line opacity (50% default).
 
 Preferences are stored as a JSON file in the OS config directory, using the `directories` crate for cross-platform path resolution.
 
@@ -380,9 +380,9 @@ The release profile uses **full LTO** (`lto = "fat"`) and a single codegen unit 
 - Application preferences with last-view restoration
 - High-resolution image export
 
-### Planned features (see `Features_to_add.md` for full behaviour)
+### Planned features (see [Features_to_add.md](Features_to_add.md) for full behaviour)
 
-The following features are planned and specified in **`Features_to_add.md`** at the project root.
+The following features are planned and specified in [**Features_to_add.md**](Features_to_add.md) in the docs folder.
 
 | Feature | Summary |
 |--------|--------|
@@ -390,7 +390,7 @@ The following features are planned and specified in **`Features_to_add.md`** at 
 | **Julia C Explorer** | Replace “Shift+Click = C” with a **grid of small Julia set previews**. Each cell maps viewport position to C; clicking a cell sets the Julia constant. Square previews; coordinate range −2 to 2 by default, configurable from the explorer. Show C coordinates on hover. Color settings editable in the grid view. Default 100 max iterations (configurable). Grid size configurable. |
 | **Display/color settings (MSZP-inspired)** | **Icon:** Replace the current palette icon with a **Display/color settings** icon that opens a panel to edit all display/color options and to select, save, and load profiles. **Profiles:** One file per profile in a **color profiles** folder at the program root (easy to share). **Bookmarks:** Save **all display/color settings individually** in each bookmark (full snapshot, not just profile name), so one-off tweaks are preserved. **Palette mode:** By number of cycles or by cycle length (same palette, different iteration→position mapping). **Start from black/white:** MSZP-style fade for the first few iterations, with **low_threshold_start** and **low_threshold_end**. **Log-log:** Toggle for continuous iteration (smooth) vs integer (banded); same as current smooth-coloring toggle, to be part of profiles and bookmarks. **Architecture:** Single coherent display/color settings model (serializable for profiles and bookmarks, easy to extend). |
 
-Details, edge cases, and exact behaviour are in **`Features_to_add.md`**.
+Details, edge cases, and exact behaviour are in [**Features_to_add.md**](Features_to_add.md).
 
 ### Post-v1.0
 

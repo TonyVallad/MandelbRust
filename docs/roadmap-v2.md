@@ -2,7 +2,7 @@
 
 Phases 0–10 are complete. This roadmap covers everything from Phase 11 onward.
 
-**Next development focus:** Phase 11 (Image Export) and beyond. Each phase is written so an AI agent can execute the tasks in order without ambiguity. Full behaviour and edge cases are specified in `Features_to_add.md`; the roadmap breaks implementation into digestible steps.
+**Next development focus:** Phase 11 (Image Export) and beyond. Each phase is written so an AI agent can execute the tasks in order without ambiguity. Full behaviour and edge cases are specified in [Features_to_add.md](Features_to_add.md); the roadmap breaks implementation into digestible steps.
 
 Each phase is a self-contained unit of work that produces a testable, working state.
 
@@ -127,7 +127,7 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 
 **Objective:** Introduce a single, serializable display/color settings model; replace the palette icon with a Display/color settings panel; add color profiles (one file per profile in `color_profiles/`); extend bookmarks to store the full display/color snapshot.
 
-**Reference:** [Features_to_add.md](../Features_to_add.md) §3; [overview.md](overview.md) §9, §10, §13 (Planned features).
+**Reference:** [Features_to_add.md](Features_to_add.md) §3; [overview.md](overview.md) §9, §10, §13 (Planned features).
 
 ### Task 8.1 — Define `DisplayColorSettings` and use it in app state ✅
 
@@ -176,7 +176,7 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 3. All edits apply immediately to the current session (re-colorize from current `IterationBuffer` where possible; no full re-render unless a future option requires it).
 4. Do **not** add profile load/save in this task (Task 8.4). The panel only edits the current `DisplayColorSettings`.
 
-**Verify:** User can change every display/color setting from the new panel. Toolbar no longer shows the old palette-only popup. Behaviour matches Features_to_add.md for the “Display/color settings icon and panel” bullet.
+**Verify:** User can change every display/color setting from the new panel. Toolbar no longer shows the old palette-only popup. Behaviour matches [Features_to_add.md](Features_to_add.md) for the “Display/color settings icon and panel” bullet.
 
 ---
 
@@ -216,7 +216,7 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 - [x] Palette icon replaced by Display/color settings icon; panel edits all display/color options
 - [x] `color_profiles/` folder; one JSON file per profile; load/save/list in panel
 - [x] Bookmarks contain and restore full `DisplayColorSettings` snapshot
-- [x] Overview and Features_to_add.md behaviour for §3 (Display and color settings) satisfied for these items
+- [x] Overview and [Features_to_add.md](Features_to_add.md) behaviour for §3 (Display and color settings) satisfied for these items
 
 ---
 
@@ -224,7 +224,7 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 
 **Objective:** Show a zoomed-out overview of the fractal with a viewport indicator; toggle with M key or toolbar icon; hide when HUD is off; size and styling configurable.
 
-**Reference:** [Features_to_add.md](../Features_to_add.md) §1.
+**Reference:** [Features_to_add.md](Features_to_add.md) §1.
 
 ### Task 9.1 — Render and cache zoomed-out overview image ✅
 
@@ -284,7 +284,9 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 - [x] Minimap drawn in **bottom-right** corner with cyan viewport rectangle and white crosshair (50% opacity default, configurable)
 - [x] Toggle via M key and toolbar icon; minimap hidden when HUD off; minimap square (1:1), range -2..2 default with zoom configurable; size (small/medium/large) and iteration count (500 default) configurable in settings
 - [x] HUD layout: render stats moved to **bottom-centre**; minimap in bottom-right; all boxes share same margins (as top boxes), rounded corners, no border, 65% opacity default (configurable in settings); toolbar unchanged
-- [x] Behaviour matches Features_to_add.md §1 and §1b
+- [x] Behaviour matches [Features_to_add.md](Features_to_add.md) §1 and §1b
+
+**Current behaviour (post–Phase 9):** Minimap shows the **current fractal** (Julia set in Julia mode, default Mandelbrot view in Mandelbrot mode). Real-axis symmetry is **disabled for Julia** in the renderer to prevent deformation. Minimap has a **1px white border** (75% opacity), **no black margin** outside it, and is **inset** from the bottom-right corner (anchor offset -8). Crosshair lines are drawn **only outside** the cyan viewport rectangle. Minimap is rendered with **4×4 anti-aliasing**.
 
 ---
 
@@ -292,13 +294,15 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 
 **Objective:** For Julia mode, replace “pick C from cursor” with a grid of small Julia set previews; clicking a cell sets the Julia constant. Support configurable grid size, coordinate range, and color settings in the explorer.
 
-**Reference:** [Features_to_add.md](../Features_to_add.md) §2.
+**Reference:** [Features_to_add.md](Features_to_add.md) §2.
+
+**Current behaviour (bottom-left panel):** In Julia mode, **Re(c)** and **Im(c)** are editable via a single DragValue each (range ±2, 10 decimal places). Changes trigger re-render and minimap update only (no history). Shift+Click on the main view and the Julia C Explorer (J key) remain available to set c.
 
 ### Task 10.1 — Grid of small Julia previews (squares, −2..2 default)
 
 **Files:** `mandelbrust-app` (new UI state and screen for “Julia C explorer”), `mandelbrust-render` (render many small Julia images)
 
-1. **Trigger:** When the user presses **J** in Julia mode (or uses the existing “set C” action), open the **Julia C Explorer** instead of (or in addition to) picking C from the cursor. Decide UX: either J always opens the grid, or a modifier/key switches between “cursor pick” and “grid explorer”. Per Features_to_add.md, J opens the grid.
+1. **Trigger:** When the user presses **J** in Julia mode (or uses the existing “set C” action), open the **Julia C Explorer** instead of (or in addition to) picking C from the cursor. Decide UX: either J always opens the grid, or a modifier/key switches between “cursor pick” and “grid explorer”. Per [Features_to_add.md](Features_to_add.md), J opens the grid.
 2. **Grid:** Display a grid of **square** images. Each cell = one Julia set with a fixed C. Map grid cell index `(i, j)` to complex C: the viewport for the grid is a fixed complex rectangle; default **−2 to 2** on both axes. So cell `(i, j)` corresponds to C = (re, im) where re and im are linearly mapped from cell indices. Number of rows/columns is **configurable** (e.g. from settings or in-explorer control); e.g. 12×16 or 14×16.
 3. **Per-cell render:** Each cell is a small **square** image (e.g. 64×64 or 80×80). For that cell, set Julia constant C from the cell’s position in the grid; render the Julia set with **coordinate range −2..2** (or the configurable range) in the complex plane. Use the current display/color settings (from `DisplayColorSettings`) and a **max iteration** default of **100** (configurable from settings). Render cells in the background (parallel or batched) so the grid fills in progressively.
 4. **Coordinate range:** Allow the user to change the “zoom” of **all** cells from within the explorer (e.g. “Range: −2..2” default; change to −1..1 for a zoomed-in grid). This affects the mapping from cell index to C.
@@ -335,7 +339,7 @@ The `colorize()` and `colorize_aa()` methods iterate sequentially over every pix
 - [x] J key (Julia mode) opens grid of small Julia previews; each cell is a square; coordinate range −2..2 default, configurable in explorer
 - [x] Click cell to set C and close explorer; hover shows C coordinates; display/color settings changeable from explorer and apply to grid and session
 - [x] Grid size and default iterations (100) configurable in settings
-- [x] Behaviour matches Features_to_add.md §2
+- [x] Behaviour matches [Features_to_add.md](Features_to_add.md) §2
 
 ---
 
@@ -976,7 +980,7 @@ These are not scheduled but tracked as future possibilities:
 - **Buddhabrot / Nebulabrot** rendering mode
 - **Orbit trap coloring** (Pickover stalks, circles, crosses)
 - **Palette editor** — custom gradient creation (Display/color profiles and panel from Phase 8 provide a foundation; editor would extend the palette definition within that model)
-- **Fade to black** — MSZP-style fade near max iterations (specified in Features_to_add.md §3; fits in DisplayColorSettings when implemented)
+- **Fade to black** — MSZP-style fade near max iterations (specified in [Features_to_add.md](Features_to_add.md) §3; fits in DisplayColorSettings when implemented)
 - **GPU perturbation** — deep zoom on the GPU using emulated double precision
 - **WebAssembly build** — run MandelbRust in the browser via wasm
 - **Plugin system** — user-defined fractal formulas
