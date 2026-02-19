@@ -26,6 +26,31 @@ use bookmarks::{Bookmark, BookmarkStore};
 use preferences::{AppPreferences, LastView};
 
 // ---------------------------------------------------------------------------
+// Window icon (taskbar, title bar)
+// ---------------------------------------------------------------------------
+
+/// Load application icon from embedded icon.ico for the window/taskbar.
+/// Returns None if icon.ico is missing or invalid.
+fn load_window_icon() -> Option<egui::IconData> {
+    let bytes = include_bytes!("../icon.ico");
+    let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Ico).ok()?;
+    let rgba = img.to_rgba8();
+    // Use 32×32 for taskbar/title bar; IconData prefers dimensions multiple of 4.
+    const SIZE: u32 = 32;
+    let resized = image::imageops::resize(
+        &rgba,
+        SIZE,
+        SIZE,
+        image::imageops::FilterType::Lanczos3,
+    );
+    Some(egui::IconData {
+        rgba: resized.as_raw().clone(),
+        width: SIZE,
+        height: SIZE,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -3704,10 +3729,15 @@ fn main() -> eframe::Result {
 
     let prefs = AppPreferences::load();
 
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("MandelbRust")
+        .with_inner_size([prefs.window_width, prefs.window_height]);
+    if let Some(icon) = load_window_icon() {
+        viewport = viewport.with_icon(Arc::new(icon));
+    }
+
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("MandelbRust")
-            .with_inner_size([prefs.window_width, prefs.window_height]),
+        viewport,
         ..Default::default()
     };
 

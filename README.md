@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/img/icon.png" alt="MandelbRust icon"">
+</p>
+
 <h1 align="center">MandelbRust</h1>
 <p align="center">A high-performance, native fractal explorer written in <strong>Rust</strong>.</p>
 
