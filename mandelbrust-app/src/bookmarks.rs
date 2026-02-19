@@ -176,9 +176,9 @@ pub fn collect_leaf_labels(bookmarks: &[Bookmark]) -> Vec<String> {
 
 /// Manages a collection of bookmarks.
 ///
-/// Each bookmark lives as an individual `.json` file inside
-/// `<config_dir>/bookmarks/`. The store reloads from disk every time the
-/// bookmark explorer is opened, so external additions/removals are picked up.
+/// Each bookmark lives as an individual `.json` file inside the bookmarks
+/// directory (by default a `bookmarks/` folder next to the executable).
+/// The store reloads from disk every time the bookmark explorer is opened.
 pub struct BookmarkStore {
     bookmarks: Vec<Bookmark>,
     /// Parallel vector: the on-disk filename for each bookmark (without path).
@@ -639,12 +639,9 @@ fn config_dir() -> PathBuf {
 }
 
 /// The default directory where individual bookmark files are stored.
-/// Uses a `bookmarks/` subdirectory in the current working directory
-/// (which is the project root when launched via `cargo run`).
+/// Uses a `bookmarks/` subdirectory next to the executable.
 fn bookmarks_dir() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("bookmarks")
+    crate::app_dir::exe_directory().join("bookmarks")
 }
 
 /// Return the default bookmarks directory path as a string (for UI display).

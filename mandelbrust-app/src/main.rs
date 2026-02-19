@@ -1,3 +1,6 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod app_dir;
 mod bookmarks;
 mod color_profiles;
 mod display_color;

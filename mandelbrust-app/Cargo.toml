@@ -5,6 +5,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "MandelbRust"
+path = "src/main.rs"
+
 [dependencies]
 mandelbrust-core.workspace = true
 mandelbrust-render.workspace = true

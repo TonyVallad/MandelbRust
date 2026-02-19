@@ -10,15 +10,9 @@ use crate::display_color::DisplayColorSettings;
 const PROFILES_DIR_NAME: &str = "color_profiles";
 const DEFAULT_PROFILE_NAME: &str = "Default";
 
-/// Directory at program root where profile JSON files are stored.
+/// Directory next to the executable where profile JSON files are stored.
 pub fn color_profiles_dir() -> PathBuf {
-    let program_root = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(PathBuf::from))
-        .unwrap_or_else(|| {
-            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        });
-    program_root.join(PROFILES_DIR_NAME)
+    crate::app_dir::exe_directory().join(PROFILES_DIR_NAME)
 }
 
 /// Sanitize a profile name for use as a filename (replace invalid chars with `_`).

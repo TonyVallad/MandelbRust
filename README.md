@@ -29,8 +29,8 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 - **Bookmark system** — self-contained, one-file-per-bookmark JSON storage with embedded base64 PNG thumbnails for easy sharing
 - **Bookmark explorer** — search, sort (A-Z / date), fractal tabs, independent favorites toggle, hierarchical label filtering (whitelist / blacklist), scrollable thumbnail grid
 - **Update or save new** — pressing S (or the toolbar icon) after opening a bookmark offers to update it in-place or save a new one
-- **Configurable bookmarks directory** — set from Settings with a native folder picker; default is the project root
-- **Application preferences** — persistent settings including window size, defaults, restore-last-view, and bookmarks folder
+- **Configurable bookmarks directory** — set from Settings with a native folder picker; default is a `bookmarks/` folder next to the executable
+- **Application preferences** — persistent settings (stored next to the exe); window size, defaults, restore-last-view, and bookmarks folder
 - **Legacy import** — old MSZP save files can be imported as bookmarks
 - **Adaptive iterations** — max iterations scale automatically with zoom depth
 - **Material Symbols icon toolbar** — top-right icon bar with state-aware dimming (navigation, palette, AA, smooth coloring, bookmarks, help, settings)

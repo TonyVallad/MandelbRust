@@ -47,7 +47,7 @@ pub struct AppPreferences {
     /// Full display/color settings from last session. Restored on startup so palette mode, start-from, etc. persist.
     #[serde(default)]
     pub last_display_color: Option<DisplayColorSettings>,
-    /// Custom bookmarks directory. When empty, the default OS config path is used.
+    /// Custom bookmarks directory. When empty, a `bookmarks/` folder next to the executable is used.
     #[serde(default)]
     pub bookmarks_dir: String,
 
@@ -229,7 +229,5 @@ impl AppPreferences {
 }
 
 fn config_path() -> PathBuf {
-    directories::ProjectDirs::from("", "", "MandelbRust")
-        .map(|d| d.config_dir().join("preferences.json"))
-        .unwrap_or_else(|| PathBuf::from("preferences.json"))
+    crate::app_dir::exe_directory().join("preferences.json")
 }
