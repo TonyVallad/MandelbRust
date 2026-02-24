@@ -16,6 +16,12 @@ pub struct LastView {
     pub mode: String,
     pub center_re: f64,
     pub center_im: f64,
+    /// Low-order bits for double-double center precision (~31 digits total).
+    #[serde(default)]
+    pub center_re_lo: f64,
+    /// Low-order bits for double-double center precision (~31 digits total).
+    #[serde(default)]
+    pub center_im_lo: f64,
     pub scale: f64,
     pub max_iterations: u32,
     pub escape_radius: f64,

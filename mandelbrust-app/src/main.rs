@@ -16,7 +16,10 @@ use std::time::Duration;
 use eframe::egui;
 use tracing::{debug, info, warn};
 
-use mandelbrust_core::{Complex, FractalParams, Julia, Mandelbrot, Viewport};
+use mandelbrust_core::{
+    Complex, ComplexDD, DoubleDouble, FractalParams, Julia, JuliaDD, Mandelbrot, MandelbrotDD,
+    Viewport,
+};
 use mandelbrust_render::{
     builtin_palettes, compute_aa, render, AaSamples, ColorParams, IterationBuffer, Palette,
     RenderCancel, RenderResult, StartFrom as RenderStartFrom,
@@ -71,8 +74,10 @@ const ADAPTIVE_ITER_RATE: f64 = 30.0;
 
 /// Snapshot entry for bookmark display: (index, name, summary, mode, labels, thumbnail_png).
 type BookmarkSnap = (usize, String, String, String, Vec<String>, String);
-/// Below this scale, warn about f64 precision limits.
-const PRECISION_WARN_SCALE: f64 = 1e-13;
+/// Below this scale, switch from f64 to double-double precision.
+const DD_THRESHOLD_SCALE: f64 = 1e-13;
+/// Below this scale, warn about double-double precision limits.
+const DD_WARN_SCALE: f64 = 1e-28;
 
 /// Phase 9: HUD box margin (same for all corners).
 const HUD_MARGIN: f32 = 8.0;
@@ -352,7 +357,11 @@ impl MandelbRustApp {
                     "Julia" => FractalMode::Julia,
                     _ => FractalMode::Mandelbrot,
                 };
-                let vp = Viewport::new(Complex::new(lv.center_re, lv.center_im), lv.scale, w, h)
+                let center_dd = ComplexDD::new(
+                    DoubleDouble::new(lv.center_re, lv.center_re_lo),
+                    DoubleDouble::new(lv.center_im, lv.center_im_lo),
+                );
+                let vp = Viewport::new_dd(center_dd, lv.scale, w, h)
                     .unwrap_or_else(|_| Viewport::default_mandelbrot(w, h));
                 let p = FractalParams::new(lv.max_iterations, lv.escape_radius)
                     .unwrap_or_default();
@@ -517,8 +526,10 @@ impl MandelbRustApp {
         Bookmark {
             name,
             mode: self.mode.label().to_string(),
-            center_re: self.viewport.center.re,
-            center_im: self.viewport.center.im,
+            center_re: self.viewport.center_dd.re.hi,
+            center_im: self.viewport.center_dd.im.hi,
+            center_re_lo: self.viewport.center_dd.re.lo,
+            center_im_lo: self.viewport.center_dd.im.lo,
             scale: self.viewport.scale,
             max_iterations: self.params.max_iterations,
             escape_radius: self.params.escape_radius,
@@ -571,8 +582,10 @@ impl MandelbRustApp {
 
         self.bookmark_store.update_viewport(idx, |bm| {
             bm.mode = self.mode.label().to_string();
-            bm.center_re = self.viewport.center.re;
-            bm.center_im = self.viewport.center.im;
+            bm.center_re = self.viewport.center_dd.re.hi;
+            bm.center_im = self.viewport.center_dd.im.hi;
+            bm.center_re_lo = self.viewport.center_dd.re.lo;
+            bm.center_im_lo = self.viewport.center_dd.im.lo;
             bm.scale = self.viewport.scale;
             bm.max_iterations = self.params.max_iterations;
             bm.escape_radius = self.params.escape_radius;
@@ -644,8 +657,12 @@ impl MandelbRustApp {
         self.bump_minimap_revision(); // display_color may have changed
 
         self.push_history();
-        self.viewport = Viewport::new(
-            Complex::new(bm.center_re, bm.center_im),
+        let center_dd = ComplexDD::new(
+            DoubleDouble::new(bm.center_re, bm.center_re_lo),
+            DoubleDouble::new(bm.center_im, bm.center_im_lo),
+        );
+        self.viewport = Viewport::new_dd(
+            center_dd,
             bm.scale,
             self.panel_size[0],
             self.panel_size[1],
@@ -659,8 +676,10 @@ impl MandelbRustApp {
     fn capture_last_view(&self) -> LastView {
         LastView {
             mode: self.mode.label().to_string(),
-            center_re: self.viewport.center.re,
-            center_im: self.viewport.center.im,
+            center_re: self.viewport.center_dd.re.hi,
+            center_im: self.viewport.center_dd.im.hi,
+            center_re_lo: self.viewport.center_dd.re.lo,
+            center_im_lo: self.viewport.center_dd.im.lo,
             scale: self.viewport.scale,
             max_iterations: self.params.max_iterations,
             escape_radius: self.params.escape_radius,
@@ -750,8 +769,10 @@ impl MandelbRustApp {
     /// so the viewport is always up-to-date.
     fn commit_pan_offset(&mut self) {
         if self.pan_offset != egui::Vec2::ZERO {
-            self.viewport.center.re -= self.pan_offset.x as f64 * self.viewport.scale;
-            self.viewport.center.im += self.pan_offset.y as f64 * self.viewport.scale;
+            self.viewport.offset_center(
+                -(self.pan_offset.x as f64) * self.viewport.scale,
+                self.pan_offset.y as f64 * self.viewport.scale,
+            );
             self.pan_offset = egui::Vec2::ZERO;
         }
     }
@@ -790,11 +811,20 @@ impl MandelbRustApp {
     // -- Navigation ------------------------------------------------------------
 
     fn zoom_at_cursor(&mut self, cursor_px: u32, cursor_py: u32, factor: f64) {
-        let target = self.viewport.pixel_to_complex(cursor_px, cursor_py);
-        self.viewport.center = Complex::new(
-            target.re + (self.viewport.center.re - target.re) * factor,
-            target.im + (self.viewport.center.im - target.im) * factor,
+        // Compute the cursor target in DD: center + delta.
+        let delta = self.viewport.pixel_to_delta(cursor_px, cursor_py);
+        let target = self.viewport.center_dd + ComplexDD::from(delta);
+        // Interpolate: new_center = target + (center - target) * factor
+        let factor_dd = DoubleDouble::from(factor);
+        let diff = ComplexDD::new(
+            self.viewport.center_dd.re - target.re,
+            self.viewport.center_dd.im - target.im,
         );
+        let new_center = ComplexDD::new(
+            target.re + diff.re * factor_dd,
+            target.im + diff.im * factor_dd,
+        );
+        self.viewport.set_center_dd(new_center);
         self.viewport.scale *= factor;
         self.needs_render = true;
     }
@@ -807,8 +837,10 @@ impl MandelbRustApp {
 
     fn pan_by_fraction(&mut self, fx: f64, fy: f64) {
         self.push_history();
-        self.viewport.center.re += fx * self.viewport.complex_width();
-        self.viewport.center.im += fy * self.viewport.complex_height();
+        self.viewport.offset_center(
+            fx * self.viewport.complex_width(),
+            fy * self.viewport.complex_height(),
+        );
         self.needs_render = true;
     }
 
@@ -1181,8 +1213,10 @@ impl MandelbRustApp {
 
         // Viewport with accumulated pan offset applied.
         let mut viewport = self.viewport;
-        viewport.center.re -= self.pan_offset.x as f64 * viewport.scale;
-        viewport.center.im += self.pan_offset.y as f64 * viewport.scale;
+        viewport.offset_center(
+            -(self.pan_offset.x as f64) * viewport.scale,
+            self.pan_offset.y as f64 * viewport.scale,
+        );
 
         let params = self.effective_params();
         let req = RenderRequest {
@@ -1334,14 +1368,19 @@ impl MandelbRustApp {
     // -- Precision warning -----------------------------------------------------
 
     fn precision_warning(&self) -> Option<&'static str> {
-        if self.viewport.scale < PRECISION_WARN_SCALE {
-            warn!(
-                "Approaching f64 precision limits at scale={:.2e}",
-                self.viewport.scale
-            );
-            Some("Approaching f64 precision limits \u{2014} artifacts may appear")
+        if self.viewport.scale < DD_WARN_SCALE {
+            Some("Approaching double-double precision limits \u{2014} artifacts may appear")
         } else {
             None
+        }
+    }
+
+    /// Label for the active precision mode, shown in the HUD.
+    fn precision_mode_label(&self) -> &'static str {
+        if self.viewport.scale < DD_THRESHOLD_SCALE {
+            "f64\u{00d7}2"
+        } else {
+            "f64"
         }
     }
 
@@ -1437,10 +1476,11 @@ impl MandelbRustApp {
                     let mid_y = (start.y + end.y) / 2.0;
                     let px = (mid_x - rect.min.x) as u32;
                     let py = (mid_y - rect.min.y) as u32;
-                    let new_center = self.viewport.pixel_to_complex(px, py);
+                    let delta = self.viewport.pixel_to_delta(px, py);
+                    let new_center = self.viewport.center_dd + ComplexDD::from(delta);
 
                     self.push_history();
-                    self.viewport.center = new_center;
+                    self.viewport.set_center_dd(new_center);
                     self.viewport.scale *= fraction as f64;
                     self.needs_render = true;
                 }
@@ -1645,6 +1685,7 @@ impl MandelbRustApp {
                         let zoom_level = 1.0 / self.viewport.scale;
                         ui.label(format!("Zoom: {zoom_level:.2e}"));
                         ui.label(format!("Iterations: {}", self.params.max_iterations));
+                        ui.label(format!("Precision: {}", self.precision_mode_label()));
 
                         ui.label(format!(
                             "Palette: {} ({})",
@@ -3547,6 +3588,9 @@ fn do_render<F: mandelbrust_core::Fractal + Sync>(
 }
 
 /// Dispatch a render to the appropriate fractal type (preserving static dispatch).
+///
+/// Automatically selects the double-double precision path when the zoom
+/// exceeds `DD_THRESHOLD_SCALE`.
 fn render_for_mode(
     mode: FractalMode,
     params: FractalParams,
@@ -3556,9 +3600,26 @@ fn render_for_mode(
     aa_level: u32,
 ) -> RenderResult {
     let use_symmetry = mode == FractalMode::Mandelbrot;
-    match mode {
-        FractalMode::Mandelbrot => do_render(&Mandelbrot::new(params), viewport, cancel, aa_level, use_symmetry),
-        FractalMode::Julia => do_render(&Julia::new(julia_c, params), viewport, cancel, aa_level, use_symmetry),
+    let use_dd = viewport.scale < DD_THRESHOLD_SCALE;
+    match (mode, use_dd) {
+        (FractalMode::Mandelbrot, false) => {
+            do_render(&Mandelbrot::new(params), viewport, cancel, aa_level, use_symmetry)
+        }
+        (FractalMode::Mandelbrot, true) => {
+            do_render(
+                &MandelbrotDD::new(params, viewport.center_dd),
+                viewport, cancel, aa_level, use_symmetry,
+            )
+        }
+        (FractalMode::Julia, false) => {
+            do_render(&Julia::new(julia_c, params), viewport, cancel, aa_level, false)
+        }
+        (FractalMode::Julia, true) => {
+            do_render(
+                &JuliaDD::new(ComplexDD::from(julia_c), params, viewport.center_dd),
+                viewport, cancel, aa_level, false,
+            )
+        }
     }
 }
 

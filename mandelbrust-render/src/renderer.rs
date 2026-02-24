@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use rayon::prelude::*;
 use tracing::{debug, info};
 
-use mandelbrust_core::{Fractal, IterationResult, Viewport};
+use mandelbrust_core::{Complex, Fractal, IterationResult, Viewport};
 
 use crate::aa::AaSamples;
 use crate::iteration_buffer::IterationBuffer;
@@ -93,6 +93,17 @@ pub struct RenderResult {
 // Border tracing
 // ---------------------------------------------------------------------------
 
+/// Map a pixel to the coordinate expected by the fractal: either an absolute
+/// complex-plane point or a delta from the fractal's internal center.
+#[inline]
+fn map_pixel<F: Fractal>(fractal: &F, viewport: &Viewport, px: u32, py: u32) -> Complex {
+    if fractal.uses_delta_coordinates() {
+        viewport.pixel_to_delta(px, py)
+    } else {
+        viewport.pixel_to_complex(px, py)
+    }
+}
+
 /// If every border pixel of the tile shares the same iteration class,
 /// return the representative `IterationResult` so we can flood-fill.
 fn check_border_uniform<F: Fractal>(
@@ -104,16 +115,16 @@ fn check_border_uniform<F: Fractal>(
         return None;
     }
 
-    let first = fractal.iterate(viewport.pixel_to_complex(tile.x, tile.y));
+    let first = fractal.iterate(map_pixel(fractal, viewport, tile.x, tile.y));
     let class = first.class();
 
     // Top and bottom rows.
     for px in 0..tile.width {
-        let top = fractal.iterate(viewport.pixel_to_complex(tile.x + px, tile.y));
+        let top = fractal.iterate(map_pixel(fractal, viewport, tile.x + px, tile.y));
         if top.class() != class {
             return None;
         }
-        let bot = fractal.iterate(viewport.pixel_to_complex(tile.x + px, tile.y + tile.height - 1));
+        let bot = fractal.iterate(map_pixel(fractal, viewport, tile.x + px, tile.y + tile.height - 1));
         if bot.class() != class {
             return None;
         }
@@ -121,12 +132,12 @@ fn check_border_uniform<F: Fractal>(
 
     // Left and right columns (corners already checked above).
     for py in 1..tile.height - 1 {
-        let left = fractal.iterate(viewport.pixel_to_complex(tile.x, tile.y + py));
+        let left = fractal.iterate(map_pixel(fractal, viewport, tile.x, tile.y + py));
         if left.class() != class {
             return None;
         }
         let right =
-            fractal.iterate(viewport.pixel_to_complex(tile.x + tile.width - 1, tile.y + py));
+            fractal.iterate(map_pixel(fractal, viewport, tile.x + tile.width - 1, tile.y + py));
         if right.class() != class {
             return None;
         }
@@ -160,7 +171,7 @@ fn render_tile<F: Fractal>(
     let mut data = Vec::with_capacity(tile.pixel_count());
     for py in 0..tile.height {
         for px in 0..tile.width {
-            let c = viewport.pixel_to_complex(tile.x + px, tile.y + py);
+            let c = map_pixel(fractal, viewport, tile.x + px, tile.y + py);
             data.push(fractal.iterate(c));
         }
     }

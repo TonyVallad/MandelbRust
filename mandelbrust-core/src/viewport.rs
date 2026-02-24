@@ -1,4 +1,6 @@
 use crate::complex::Complex;
+use crate::complex_dd::ComplexDD;
+use crate::double_double::DoubleDouble;
 use crate::error::CoreError;
 
 /// Defines the visible region of the complex plane.
@@ -6,10 +8,17 @@ use crate::error::CoreError;
 /// The camera maps pixel coordinates to complex plane coordinates.
 /// The viewport is centred on `center`, with `scale` defining how many
 /// complex-plane units each pixel spans.
+///
+/// `center_dd` is the authoritative high-precision center (~31 digits).
+/// `center` is always the `f64` approximation of `center_dd` and is kept
+/// in sync for code that only needs `f64` precision (HUD, minimap, etc.).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Viewport {
-    /// Centre of the viewport in the complex plane.
+    /// Centre of the viewport (`f64` approximation of `center_dd`).
     pub center: Complex,
+
+    /// Centre of the viewport in double-double precision (~31 digits).
+    pub center_dd: ComplexDD,
 
     /// Complex-plane units per pixel.
     pub scale: f64,
@@ -32,8 +41,10 @@ impl Viewport {
         let target_re = 3.6; // real span
         let target_im = 2.6; // imaginary span
         let scale = (target_re / width as f64).max(target_im / height as f64);
+        let center = Complex::new(-0.75, 0.0);
         Self {
-            center: Complex::new(-0.75, 0.0),
+            center,
+            center_dd: ComplexDD::from(center),
             scale,
             width,
             height,
@@ -48,15 +59,26 @@ impl Viewport {
         let extent = 4.2; // 4.0 + padding
         let scale = (extent / width as f64).max(extent / height as f64);
         Self {
-            center: Complex::new(0.0, 0.0),
+            center: Complex::ZERO,
+            center_dd: ComplexDD::ZERO,
             scale,
             width,
             height,
         }
     }
 
-    /// Create a viewport with explicit parameters.
+    /// Create a viewport with explicit parameters (`f64` center).
     pub fn new(center: Complex, scale: f64, width: u32, height: u32) -> crate::Result<Self> {
+        Self::new_dd(ComplexDD::from(center), scale, width, height)
+    }
+
+    /// Create a viewport with a double-double precision center.
+    pub fn new_dd(
+        center_dd: ComplexDD,
+        scale: f64,
+        width: u32,
+        height: u32,
+    ) -> crate::Result<Self> {
         if width == 0 || height == 0 {
             return Err(CoreError::InvalidViewport {
                 reason: format!("dimensions must be > 0, got {width}×{height}"),
@@ -68,11 +90,28 @@ impl Viewport {
             });
         }
         Ok(Self {
-            center,
+            center: center_dd.to_complex(),
+            center_dd,
             scale,
             width,
             height,
         })
+    }
+
+    /// Update the center using double-double precision.
+    /// Also updates the `f64` `center` field.
+    #[inline]
+    pub fn set_center_dd(&mut self, center_dd: ComplexDD) {
+        self.center_dd = center_dd;
+        self.center = center_dd.to_complex();
+    }
+
+    /// Offset the center by a delta (in `f64`), preserving DD precision.
+    #[inline]
+    pub fn offset_center(&mut self, dre: f64, dim: f64) {
+        self.center_dd.re += DoubleDouble::from(dre);
+        self.center_dd.im += DoubleDouble::from(dim);
+        self.center = self.center_dd.to_complex();
     }
 
     /// Map a pixel coordinate to a point on the complex plane.
@@ -98,6 +137,27 @@ impl Viewport {
         )
     }
 
+    /// Map a pixel coordinate to a **delta** from the viewport center.
+    ///
+    /// Used by extended-precision fractals that store their own high-precision
+    /// center and need the offset in `f64` (which is small enough to be exact).
+    #[inline]
+    pub fn pixel_to_delta(&self, px: u32, py: u32) -> Complex {
+        self.subpixel_to_delta(px as f64, py as f64)
+    }
+
+    /// Like [`pixel_to_delta`](Self::pixel_to_delta) but accepts fractional
+    /// pixel coordinates for sub-pixel sampling.
+    #[inline]
+    pub fn subpixel_to_delta(&self, px: f64, py: f64) -> Complex {
+        let half_w = self.width as f64 / 2.0;
+        let half_h = self.height as f64 / 2.0;
+        Complex::new(
+            (px - half_w) * self.scale,
+            -(py - half_h) * self.scale,
+        )
+    }
+
     /// The aspect ratio of the viewport (width / height).
     pub fn aspect_ratio(&self) -> f64 {
         self.width as f64 / self.height as f64
@@ -111,6 +171,7 @@ impl Viewport {
         let f = factor.max(1);
         Self {
             center: self.center,
+            center_dd: self.center_dd,
             scale: self.scale * f as f64,
             width: self.width.div_ceil(f),
             height: self.height.div_ceil(f),
