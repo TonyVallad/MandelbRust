@@ -1,8 +1,6 @@
 # MandelbRust — Roadmap
 
-Phases 0–11 are complete (see [roadmap-completed.md](roadmap-completed.md)). This document covers everything from Phase 12 onward.
-
-**Next development focus: Phase 12 — Deep Zoom: Perturbation Theory.**
+**Next development focus: Phase 14 — Main Menu at Launch.**
 
 Each phase is a self-contained unit of work that produces a testable, working state.
 
@@ -28,28 +26,176 @@ Each phase is a self-contained unit of work that produces a testable, working st
 
 | Phase | Description |
 |-------|-------------|
-| 12 | Deep Zoom: Perturbation Theory |
-| 13 | Deep Zoom: Series Approximation |
-| 14 | Image Export |
-| 15 | Architecture Cleanup |
-| 16 | Memory Layout & Buffer Management |
-| 17 | Advanced Coloring |
-| 18 | SIMD Vectorization |
-| 19 | Animation & Video Export |
-| 20 | GPU Compute Backend |
-| 21 | Polish & v1.0 Release |
+| 14 | Main Menu at Launch |
+| 15 | HUD Modifications |
+| 16 | Minimap Size Controls |
+| 17 | Deep Zoom: Perturbation Theory |
+| 18 | Deep Zoom: Series Approximation |
+| 19 | Image Export |
+| 20 | Memory Layout & Buffer Management |
+| 21 | Advanced Coloring |
+| 22 | SIMD Vectorization |
+| 23 | Animation & Video Export |
+| 24 | GPU Compute Backend |
+| 25 | Polish & v1.0 Release |
+
+Feature specifications for Phases 14–16: [Features_to_add.md](../Features_to_add.md).
 
 Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis.md).
 
 ---
 
-## Phase 12 — Deep Zoom: Perturbation Theory
+## Phase 14 — Main Menu at Launch
+
+**Objective:** Show a full-window main menu when the app starts, letting the user choose how to begin: resume, Mandelbrot, Julia, or open a bookmark. The fractal explorer is not loaded until a choice is made.
+
+**Reference:** [Features_to_add.md](../Features_to_add.md) §1.
+
+### Task 14.1 — Main menu screen
+
+**Files:** new file `mandelbrust-app/src/ui/main_menu.rs`, update `app.rs`
+
+1. When `AppScreen::MainMenu` is active, draw a full-window layout with four tiles arranged horizontally:
+   - **Resume Exploration**: displays last-view parameters (fractal, center, zoom, iterations, C for Julia). Separated from the other tiles by a vertical line.
+   - **Mandelbrot Set**: short description and formula placeholder.
+   - **Julia's Sets**: short description and formula placeholder.
+   - **Open Bookmark**: opens full-window bookmark browser.
+2. Tiles have **very small rounded corners**; background is **plain black**.
+3. Each tile has a **preview image area** (placeholder for now), a **title in cyan**, and **details text**.
+4. Clicking a tile triggers the corresponding action and transitions `AppScreen` to the appropriate screen.
+
+**Verify:** App launches to the main menu. Each tile navigates correctly. Menu bar is visible above the main menu.
+
+---
+
+### Task 14.2 — Full-window bookmark browser
+
+**Files:** new file `mandelbrust-app/src/ui/bookmark_browser.rs` (or extend `ui/bookmarks.rs`), update `app.rs`
+
+1. When `AppScreen::BookmarkBrowser` is active, draw a full-window bookmark explorer (not an overlay on the fractal view).
+2. Double-click on a bookmark or select + click "Open" → load the bookmark and transition to `AppScreen::FractalExplorer`.
+3. A "Back" button or Escape returns to the main menu.
+4. Reuse existing bookmark grid/list drawing logic where possible.
+
+**Verify:** Bookmark browser fills the window. Selecting a bookmark opens the fractal explorer at that bookmark.
+
+---
+
+### Task 14.3 — Julia C Explorer as a full screen
+
+**Files:** update `mandelbrust-app/src/ui/julia_explorer.rs`, `app.rs`
+
+1. When launched from the main menu's "Julia's Sets" tile, the Julia C Explorer opens as a full-window screen (`AppScreen::JuliaCExplorer`).
+2. The user picks a C from the grid (double-click or select + "Open"). This sets C and transitions to `AppScreen::FractalExplorer` in Julia mode.
+3. A "Back" button or Escape returns to the main menu.
+
+**Verify:** Julia C Explorer fills the window when launched from the main menu. Selecting a C opens the fractal explorer in Julia mode.
+
+---
+
+### Deliverables — Phase 14
+
+- [ ] Main menu displayed on launch with four tiles
+- [ ] "Resume Exploration" separated by a vertical line
+- [ ] Full-window bookmark browser accessible from main menu
+- [ ] Full-window Julia C Explorer accessible from main menu
+- [ ] Menu bar visible on all screens
+- [ ] Fractal explorer only loads after a choice is made
+
+---
+
+## Phase 15 — HUD Modifications
+
+**Objective:** Rework the top-left and bottom-left HUD panels for clearer display, editable fields, and a simplified iterations/escape-radius block.
+
+**Reference:** [Features_to_add.md](../Features_to_add.md) §4.
+
+### Task 15.1 — Top-left HUD rework
+
+**Files:** `mandelbrust-app/src/ui/hud.rs`
+
+1. **Fractal name**: replace "Mode: …" with just the fractal name (e.g. "Mandelbrot" or "Julia"), **centered horizontally**, in **cyan**.
+2. **Coordinates**: display real and imaginary on **two separate lines**.
+3. **Editable coordinates and zoom**: make the coordinate and zoom fields editable text inputs. Pressing Enter or losing focus applies the new value and triggers a re-render.
+4. **Julia C coordinates**: in Julia mode, display C coordinates in the same block and make them editable.
+5. **Iterations display**: show the **actual** iteration count when using adaptive iterations. Format with **thousands separators** (e.g. `1.000.000`).
+
+**Verify:** Fields are editable. Typing a new coordinate and pressing Enter navigates the view. Thousands separators display correctly.
+
+---
+
+### Task 15.2 — Bottom-left HUD rework
+
+**Files:** `mandelbrust-app/src/ui/params.rs`
+
+1. **Remove** the iterations slider. Keep only the numeric input for max iterations.
+2. Allow input values **up to 1.000.000** (or a configurable limit set in the Settings menu).
+3. **Remove** the "×10" and "/10" buttons.
+4. Move the **Escape R** slider **below** all iterations-related controls.
+
+**Verify:** Iterations input accepts large values. No slider or ×10/÷10 buttons. Escape radius slider is at the bottom of the panel.
+
+---
+
+### Deliverables — Phase 15
+
+- [ ] Fractal name centred in cyan, no "Mode:" prefix
+- [ ] Coordinates on separate lines, editable
+- [ ] Zoom editable
+- [ ] Julia C coordinates displayed and editable
+- [ ] Iterations show actual count with thousands separators
+- [ ] Iterations slider and ×10/÷10 buttons removed
+- [ ] Max iterations limit configurable in Settings
+- [ ] Escape R slider below iterations controls
+
+---
+
+## Phase 16 — Minimap Size Controls
+
+**Objective:** Allow the user to change minimap size from the UI and keyboard, complementing the existing settings menu option.
+
+**Reference:** [Features_to_add.md](../Features_to_add.md) §2.
+
+### Task 16.1 — Add +/− buttons on the minimap
+
+**Files:** `mandelbrust-app/src/ui/minimap.rs`
+
+1. Draw **"−"** and **"+"** buttons on or next to the minimap panel.
+2. Clicking them cycles through the size options (small → medium → large and back, or continuous scaling — whichever fits the existing `MinimapSize` model).
+3. Persist the new size to preferences.
+
+**Verify:** Clicking + increases size, − decreases. Size persists across restarts.
+
+---
+
+### Task 16.2 — Page Up / Page Down keyboard shortcuts
+
+**Files:** `mandelbrust-app/src/input.rs`
+
+1. **Page Up**: increase minimap size.
+2. **Page Down**: decrease minimap size.
+3. Same behaviour as the +/− buttons.
+
+**Verify:** Page Up / Page Down change the minimap size. Update the help/shortcuts reference.
+
+---
+
+### Deliverables — Phase 16
+
+- [ ] +/− buttons on the minimap
+- [ ] Page Up / Page Down change minimap size
+- [ ] Preferences updated on change
+- [ ] Keyboard shortcuts documented
+
+---
+
+## Phase 17 — Deep Zoom: Perturbation Theory
 
 **Objective:** Enable zoom depths of 10^50+ by computing a single arbitrary-precision reference orbit and iterating per-pixel `f64` deltas. This is the transformational change for deep zoom.
 
 **Reference:** [deep-zoom-analysis.md](../deep-zoom-analysis.md), Option 1.
 
-### Task 12.1 — Add arbitrary-precision dependency
+### Task 17.1 — Add arbitrary-precision dependency
 
 **Files:** `mandelbrust-core/Cargo.toml`, new file `mandelbrust-core/src/arb.rs`
 
@@ -64,7 +210,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 12.2 — Compute reference orbit
+### Task 17.2 — Compute reference orbit
 
 **File:** new file `mandelbrust-core/src/perturbation.rs`
 
@@ -80,21 +226,21 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 12.3 — Delta iteration (perturbation per-pixel)
+### Task 17.3 — Delta iteration (perturbation per-pixel)
 
 **File:** `mandelbrust-core/src/perturbation.rs`
 
 1. Implement `fn iterate_perturbed(ref_orbit: &ReferenceOrbit, delta_c: Complex, max_iter: u32, escape_radius_sq: f64) -> IterationResult`.
 2. The delta recurrence: `δ_{n+1} = 2·Z_n·δ_n + δ_n² + δc`, where `Z_n` comes from the reference orbit and `δ_n`, `δc` are `f64`.
 3. Escape check: `|Z_n + δ_n|² > escape_radius²`. Expand using `|Z_n|² + 2·Re(Z_n·conj(δ_n)) + |δ_n|²`.
-4. If the reference orbit escapes before the pixel, handle gracefully (the pixel may still be iterating; this is a "rebasing" scenario — for now, fall back to marking the pixel for a secondary reference orbit in Task 12.4).
+4. If the reference orbit escapes before the pixel, handle gracefully (the pixel may still be iterating; this is a "rebasing" scenario — for now, fall back to marking the pixel for a secondary reference orbit in Task 17.4).
 5. Return `IterationResult::Escaped { iterations, norm_sq }` or `IterationResult::Interior`.
 
 **Verify:** A small test image at zoom 10^20 rendered via perturbation matches a brute-force arbitrary-precision reference (at tiny resolution, e.g. 16×16).
 
 ---
 
-### Task 12.4 — Glitch detection and rebasing
+### Task 17.4 — Glitch detection and rebasing
 
 **File:** `mandelbrust-core/src/perturbation.rs`
 
@@ -108,9 +254,9 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 12.5 — Integrate perturbation into the render pipeline
+### Task 17.5 — Integrate perturbation into the render pipeline
 
-**Files:** `mandelbrust-render/src/renderer.rs`, `mandelbrust-app/src/main.rs`
+**Files:** `mandelbrust-render/src/renderer.rs`, `mandelbrust-app/src/render_bridge.rs`
 
 1. **Auto-detection**: when `viewport.scale < 1e-13`, engage the perturbation path instead of (or in addition to) the double-double path. The perturbation path is preferred at extreme depths because it keeps per-pixel work in `f64`.
 2. **Render flow**:
@@ -125,9 +271,9 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 12.6 — Adaptive iteration scaling for deep zoom
+### Task 17.6 — Adaptive iteration scaling for deep zoom
 
-**Files:** `mandelbrust-app/src/main.rs`
+**Files:** `mandelbrust-app/src/app.rs` (or relevant input/render module)
 
 1. Review and tune `ADAPTIVE_ITER_RATE` for deep zoom. At 10^50 zoom, the Mandelbrot boundary requires much higher iteration counts.
 2. Consider a two-segment curve: the current `30` iterations per zoom doubling up to 10^10, then a steeper rate (e.g. 50–80 per doubling) beyond that.
@@ -137,7 +283,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Deliverables — Phase 12
+### Deliverables — Phase 17
 
 - [ ] Arbitrary-precision wrapper (`ComplexArb`) in `mandelbrust-core`
 - [ ] Reference orbit computation with cancellation support
@@ -149,13 +295,13 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-## Phase 13 — Deep Zoom: Series Approximation
+## Phase 18 — Deep Zoom: Series Approximation
 
 **Objective:** Dramatically reduce per-frame cost at extreme zoom depths (10^20+) by skipping early iterations via a polynomial approximation of the perturbation orbit.
 
 **Reference:** [deep-zoom-analysis.md](../deep-zoom-analysis.md), Option 1 (SA section).
 
-### Task 13.1 — Taylor series coefficient computation
+### Task 18.1 — Taylor series coefficient computation
 
 **File:** `mandelbrust-core/src/perturbation.rs` (extend)
 
@@ -173,7 +319,7 @@ Compute series approximation coefficients alongside the reference orbit:
 
 ---
 
-### Task 13.2 — Iteration skipping in the perturbation loop
+### Task 18.2 — Iteration skipping in the perturbation loop
 
 **File:** `mandelbrust-core/src/perturbation.rs` (extend `iterate_perturbed`)
 
@@ -185,7 +331,7 @@ Compute series approximation coefficients alongside the reference orbit:
 
 ---
 
-### Task 13.3 — Configurable SA order
+### Task 18.3 — Configurable SA order
 
 **File:** `mandelbrust-core/src/perturbation.rs`
 
@@ -197,7 +343,7 @@ Compute series approximation coefficients alongside the reference orbit:
 
 ---
 
-### Deliverables — Phase 13
+### Deliverables — Phase 18
 
 - [ ] SA coefficient computation integrated into reference orbit
 - [ ] Iteration skipping in the perturbation loop
@@ -207,11 +353,11 @@ Compute series approximation coefficients alongside the reference orbit:
 
 ---
 
-## Phase 14 — Image Export
+## Phase 19 — Image Export
 
 **Objective:** Support high-quality still image exports independent of screen resolution, using the current display/color settings.
 
-### Task 14.1 — Offscreen renderer
+### Task 19.1 — Offscreen renderer
 
 **File:** new function in `mandelbrust-render/src/renderer.rs`
 
@@ -228,7 +374,7 @@ This function must be usable without any UI dependencies — it lives in the `ma
 
 ---
 
-### Task 14.2 — PNG export utility
+### Task 19.2 — PNG export utility
 
 **File:** new function in `mandelbrust-render/src/lib.rs` or a new `export.rs` module
 
@@ -241,9 +387,9 @@ Create a function `export_png()` that:
 
 ---
 
-### Task 14.3 — Export UI in the app
+### Task 19.3 — Export UI in the app
 
-**File:** `mandelbrust-app/src/main.rs`
+**File:** `mandelbrust-app/src/ui/` (new export dialog module or extend toolbar)
 
 1. Add a toolbar icon (Material Symbols `ICON_PHOTO_CAMERA` or similar) that opens an export dialog.
 2. The dialog offers: width and height inputs (default: current viewport size ×2), AA level selector, "Export" button, and a file save dialog (via `rfd::FileDialog::new().save_file()`).
@@ -255,7 +401,7 @@ Create a function `export_png()` that:
 
 ---
 
-### Task 14.4 — Update documentation
+### Task 19.4 — Update documentation
 
 **Files:** `docs/overview.md`, `README.md`
 
@@ -267,7 +413,7 @@ Create a function `export_png()` that:
 
 ---
 
-### Deliverables — Phase 14
+### Deliverables — Phase 19
 
 - [ ] `render_offscreen()` function in the render crate (no UI dependency)
 - [ ] `export_png()` utility function
@@ -278,98 +424,13 @@ Create a function `export_png()` that:
 
 ---
 
-## Phase 15 — Architecture Cleanup
-
-**Objective:** Reduce complexity in `main.rs`, improve state management, and move I/O off the UI thread. This prepares the codebase for larger features (SIMD, GPU, animation).
-
-**Reference:** [optimization-report.md](../optimization-report.md) sections 10, 11, 12.
-
-### Task 15.1 — Split `main.rs` into UI modules
-
-**Current state:** `main.rs` contains all UI logic (~2500+ lines). Split it into focused modules.
-
-Create the following files under `mandelbrust-app/src/`:
-
-| New file | Responsibility | Functions to move |
-|---|---|---|
-| `app.rs` | `MandelbRustApp` struct definition, `new()`, `update()` orchestration | Struct + impl blocks for new/update |
-| `render_bridge.rs` | `RenderRequest`, `RenderResponse`, `RenderPhase`, render thread setup, `request_render()`, `poll_responses()`, `apply_result()` | All render communication logic |
-| `ui/mod.rs` | Module declarations | — |
-| `ui/toolbar.rs` | `show_top_right_toolbar()` | Toolbar icon bar |
-| `ui/hud.rs` | `show_hud()`, top-left info, bottom-right stats | HUD overlay drawing |
-| `ui/params.rs` | Bottom-left fractal parameters panel | `show_fractal_params()` |
-| `ui/bookmarks.rs` | Bookmark explorer, save/update dialogs | `show_bookmark_window()`, `show_save_dialog()`, `show_update_or_save_dialog()` |
-| `ui/settings.rs` | Settings panel | `show_controls_panel()` (renamed to `show_settings()`) |
-| `ui/help.rs` | Controls & shortcuts window | `show_help_window()` |
-| `ui/display_color.rs` | Display/color settings panel | Display/color panel logic |
-| `input.rs` | `handle_keyboard()`, mouse input processing | All input handling |
-
-Rules:
-- Each module receives `&mut MandelbRustApp` (or the relevant subset of state) and `&egui::Context`.
-- `main.rs` only contains `fn main()` and the `eframe::run_native` call.
-- No logic changes — just code reorganisation. Behaviour must be identical.
-
-**Verify:** `cargo build` succeeds. `cargo clippy --workspace` is clean. The application runs and behaves identically.
-
----
-
-### Task 15.2 — Consolidate UI panel state into enums
-
-**Files:** `mandelbrust-app/src/app.rs` (or wherever the struct lives after 15.1)
-
-1. Create `enum ActivePanel { None, Settings, Help, BookmarkExplorer, SaveDialog, UpdateOrSaveDialog, DisplayColorSettings, PalettePopup }`.
-2. Replace `show_controls`, `show_help`, `show_bookmarks`, `show_save_dialog`, `show_update_or_save_dialog`, `show_palette_popup` with a single `active_panel: ActivePanel` field.
-3. Update all toggle logic: opening a panel sets `active_panel = X`, closing sets `active_panel = None`.
-4. Independent display flags (`show_hud`, `show_crosshair`, `smooth_coloring`, `adaptive_iterations`) remain as booleans — group them into a `DisplaySettings` struct.
-
-**Verify:** Same behaviour as before. All panels open and close correctly. Escape closes the active panel.
-
----
-
-### Task 15.3 — Move file I/O off the UI thread
-
-**Files:** `mandelbrust-app/src/bookmarks.rs`, new file `mandelbrust-app/src/io_worker.rs`
-
-1. Define `IoRequest` and `IoResponse` enums.
-2. Spawn an I/O worker thread in `MandelbRustApp::new()` with `mpsc` channels.
-3. Replace all synchronous `BookmarkStore` file operations with messages sent to the I/O thread.
-4. Poll the I/O response channel in the `update()` loop.
-5. Thumbnail encoding/decoding also moves to the I/O thread.
-
-**Verify:** Bookmarks save, load, delete, rename, and update correctly. No file I/O on the UI thread.
-
----
-
-### Task 15.4 — Stable bookmark IDs and LRU thumbnail cache
-
-**Files:** `mandelbrust-app/src/bookmarks.rs`, app state struct
-
-1. Add `pub id: String` to `Bookmark` (use sanitised filename as ID).
-2. Key `thumbnail_cache` and `failed_thumbnails` by `String` (bookmark ID) instead of `usize`.
-3. Replace thumbnail cache with bounded LRU (max 64 entries).
-4. Remove manual `thumbnail_cache.clear()` calls.
-
-**Verify:** Thumbnails display correctly after sorting, deleting, and reloading.
-
----
-
-### Deliverables — Phase 15
-
-- [ ] `main.rs` is < 100 lines; all logic lives in focused modules
-- [ ] UI panel state uses an enum, not boolean flags
-- [ ] All file I/O happens on a background thread
-- [ ] Bookmark IDs are stable strings; thumbnail cache is bounded LRU
-- [ ] Application behaves identically to before
-
----
-
-## Phase 16 — Memory Layout & Buffer Management
+## Phase 20 — Memory Layout & Buffer Management
 
 **Objective:** Reduce memory footprint and allocation pressure for faster rendering.
 
 **Reference:** [optimization-report.md](../optimization-report.md) section 5.
 
-### Task 16.1 — Compact `IterationResult` to 8 bytes
+### Task 20.1 — Compact `IterationResult` to 8 bytes
 
 **File:** `mandelbrust-core/src/fractal.rs`, `mandelbrust-render/src/iteration_buffer.rs`, `mandelbrust-render/src/palette.rs`, `mandelbrust-render/src/aa.rs`
 
@@ -390,7 +451,7 @@ Update all code that pattern-matches on the old enum to use the new struct metho
 
 ---
 
-### Task 16.2 — Buffer pool for tile rendering
+### Task 20.2 — Buffer pool for tile rendering
 
 **Files:** `mandelbrust-render/src/renderer.rs`
 
@@ -400,7 +461,7 @@ Add a tile buffer pool using Rayon's `thread_local!` pattern to give each thread
 
 ---
 
-### Task 16.3 — Avoid full buffer rebuild on `shift()`
+### Task 20.3 — Avoid full buffer rebuild on `shift()`
 
 **Files:** `mandelbrust-render/src/iteration_buffer.rs`, `mandelbrust-render/src/aa.rs`
 
@@ -410,7 +471,7 @@ Shift `IterationBuffer` and `AaSamples` in-place instead of allocating new buffe
 
 ---
 
-### Deliverables — Phase 16
+### Deliverables — Phase 20
 
 - [ ] `IterationResult` is 8 bytes (down from 16)
 - [ ] Tile buffers are pooled and reused
@@ -419,13 +480,13 @@ Shift `IterationBuffer` and `AaSamples` in-place instead of allocating new buffe
 
 ---
 
-## Phase 17 — Advanced Coloring
+## Phase 21 — Advanced Coloring
 
 **Objective:** Add coloring techniques that dramatically improve visual quality.
 
 **Reference:** [optimization-report.md](../optimization-report.md) section 7.
 
-### Task 17.1 — Histogram equalization coloring
+### Task 21.1 — Histogram equalization coloring
 
 **File:** `mandelbrust-render/src/palette.rs`
 
@@ -435,7 +496,7 @@ Add `colorize_histogram()`: build iteration histogram → CDF → map pixels thr
 
 ---
 
-### Task 17.2 — Distance estimation
+### Task 21.2 — Distance estimation
 
 **Files:** `mandelbrust-core/src/mandelbrot.rs`, `mandelbrust-core/src/julia.rs`, `mandelbrust-render/src/palette.rs`
 
@@ -445,7 +506,7 @@ Track derivative `dz` alongside iteration, compute `d = |z|·ln|z| / |dz|`, add 
 
 ---
 
-### Task 17.3 — Stripe average coloring for interior points
+### Task 21.3 — Stripe average coloring for interior points
 
 **Files:** `mandelbrust-core/src/mandelbrot.rs`, `mandelbrust-core/src/julia.rs`, `mandelbrust-render/src/palette.rs`
 
@@ -455,7 +516,7 @@ Accumulate angular stripe average during iteration, add a coloring mode for inte
 
 ---
 
-### Deliverables — Phase 17
+### Deliverables — Phase 21
 
 - [ ] Histogram equalization toggle
 - [ ] Distance estimation coloring mode
@@ -464,13 +525,13 @@ Accumulate angular stripe average during iteration, add a coloring mode for inte
 
 ---
 
-## Phase 18 — SIMD Vectorization
+## Phase 22 — SIMD Vectorization
 
 **Objective:** Process 4 pixels simultaneously per CPU core using SIMD instructions.
 
 **Reference:** [optimization-report.md](../optimization-report.md) section 3.
 
-### Task 18.1 — Add batch iteration API
+### Task 22.1 — Add batch iteration API
 
 **File:** `mandelbrust-core/src/fractal.rs`
 
@@ -480,7 +541,7 @@ Add `fn iterate_batch()` default method on the `Fractal` trait. Update tile rend
 
 ---
 
-### Task 18.2 — SIMD Mandelbrot iteration (AVX2)
+### Task 22.2 — SIMD Mandelbrot iteration (AVX2)
 
 **Files:** new file `mandelbrust-core/src/mandelbrot_simd.rs`
 
@@ -490,17 +551,17 @@ Implement `iterate_batch_simd()` processing 4 complex points per step using `f64
 
 ---
 
-### Task 18.3 — SIMD Julia iteration
+### Task 22.3 — SIMD Julia iteration
 
 **File:** new file `mandelbrust-core/src/julia_simd.rs`
 
-Same as 18.2 but for the Julia set.
+Same as 22.2 but for the Julia set.
 
 **Verify:** Output identical to scalar. Similar speedup.
 
 ---
 
-### Deliverables — Phase 18
+### Deliverables — Phase 22
 
 - [ ] `iterate_batch()` API on the `Fractal` trait
 - [ ] SIMD Mandelbrot and Julia iteration (4 pixels per step)
@@ -509,11 +570,11 @@ Same as 18.2 but for the Julia set.
 
 ---
 
-## Phase 19 — Animation & Video Export
+## Phase 23 — Animation & Video Export
 
 **Objective:** Enable smooth fractal zoom animations between bookmarks.
 
-### Task 19.1 — Keyframe system
+### Task 23.1 — Keyframe system
 
 **File:** new file `mandelbrust-app/src/animation.rs`
 
@@ -523,15 +584,15 @@ Define `Keyframe` and `AnimationPlan` structs. Implement camera interpolation: l
 
 ---
 
-### Task 19.2 — Frame-by-frame renderer
+### Task 23.2 — Frame-by-frame renderer
 
-Render each frame via `render_offscreen()` (Phase 14), write PNG sequence to output directory. Background thread with progress callback and cancellation.
+Render each frame via `render_offscreen()` (Phase 19), write PNG sequence to output directory. Background thread with progress callback and cancellation.
 
 **Verify:** 10 frames produce 10 correctly named PNGs with smooth viewport transitions.
 
 ---
 
-### Task 19.3 — Animation UI
+### Task 23.3 — Animation UI
 
 Add an "Animation" panel with keyframe list (drag-to-reorder, add/remove), FPS/resolution options, render button, and progress bar.
 
@@ -539,7 +600,7 @@ Add an "Animation" panel with keyframe list (drag-to-reorder, add/remove), FPS/r
 
 ---
 
-### Task 19.4 — Optional ffmpeg integration
+### Task 23.4 — Optional ffmpeg integration
 
 After PNG render, offer "Convert to MP4" if ffmpeg is on PATH. Handle not-found gracefully.
 
@@ -547,7 +608,7 @@ After PNG render, offer "Convert to MP4" if ffmpeg is on PATH. Handle not-found 
 
 ---
 
-### Deliverables — Phase 19
+### Deliverables — Phase 23
 
 - [ ] Keyframe system with logarithmic zoom interpolation
 - [ ] Frame-by-frame PNG export
@@ -556,13 +617,13 @@ After PNG render, offer "Convert to MP4" if ffmpeg is on PATH. Handle not-found 
 
 ---
 
-## Phase 20 — GPU Compute Backend
+## Phase 24 — GPU Compute Backend
 
 **Objective:** Add an optional GPU rendering backend for 50–200× faster interactive exploration, including GPU-accelerated perturbation for real-time deep zoom.
 
 **Reference:** [optimization-report.md](../optimization-report.md) section 4; [deep-zoom-analysis.md](../deep-zoom-analysis.md), Option 6.
 
-### Task 20.1 — wgpu compute pipeline setup
+### Task 24.1 — wgpu compute pipeline setup
 
 Create the GPU compute infrastructure:
 - Uniform buffer: viewport center, scale, dimensions, max_iterations, escape_radius.
@@ -573,7 +634,7 @@ Create the GPU compute infrastructure:
 
 ---
 
-### Task 20.2 — GPU colorization shader
+### Task 24.2 — GPU colorization shader
 
 WGSL compute shader that reads the iteration buffer, applies a palette LUT, and writes RGBA pixels. Smooth coloring in shader.
 
@@ -581,7 +642,7 @@ WGSL compute shader that reads the iteration buffer, applies a palette LUT, and 
 
 ---
 
-### Task 20.3 — Integrate GPU backend into the app
+### Task 24.3 — Integrate GPU backend into the app
 
 Add "Renderer: CPU / GPU" toggle in settings. GPU writes directly to texture. Graceful CPU fallback if GPU init fails.
 
@@ -589,15 +650,15 @@ Add "Renderer: CPU / GPU" toggle in settings. GPU writes directly to texture. Gr
 
 ---
 
-### Task 20.4 — GPU perturbation (deep zoom on GPU)
+### Task 24.4 — GPU perturbation (deep zoom on GPU)
 
-Upload the reference orbit (from Phase 12) as a GPU storage buffer. Each GPU thread iterates deltas for one pixel. Emulated f64 in WGSL if needed, or Vulkan `shaderFloat64` on supported hardware.
+Upload the reference orbit (from Phase 17) as a GPU storage buffer. Each GPU thread iterates deltas for one pixel. Emulated f64 in WGSL if needed, or Vulkan `shaderFloat64` on supported hardware.
 
 **Verify:** GPU perturbation at zoom 10^25 matches CPU perturbation output. Render time is significantly faster.
 
 ---
 
-### Deliverables — Phase 20
+### Deliverables — Phase 24
 
 - [ ] WGSL compute shaders for iteration and colorization
 - [ ] GPU/CPU toggle in settings with graceful fallback
@@ -606,41 +667,41 @@ Upload the reference orbit (from Phase 12) as a GPU storage buffer. Each GPU thr
 
 ---
 
-## Phase 21 — Polish & v1.0 Release
+## Phase 25 — Polish & v1.0 Release
 
 **Objective:** Stabilise, document, and prepare for public release.
 
-### Task 21.1 — Error handling audit
+### Task 25.1 — Error handling audit
 
 Audit all `unwrap()`, `expect()`, `panic!()` calls. Replace with proper error handling where recoverable. Keep `unwrap()` only where invariants are guaranteed (with comments).
 
 ---
 
-### Task 21.2 — Cross-platform verification
+### Task 25.2 — Cross-platform verification
 
 Build and test on Windows (primary), macOS, and Linux. Fix platform-specific issues.
 
 ---
 
-### Task 21.3 — Performance profiling
+### Task 25.3 — Performance profiling
 
 Profile with `cargo flamegraph` or `perf`. Fix top 3 bottlenecks. Log final benchmarks.
 
 ---
 
-### Task 21.4 — Final documentation pass
+### Task 25.4 — Final documentation pass
 
 Update `overview.md`, `README.md`, `optimization-report.md`, and this roadmap.
 
 ---
 
-### Task 21.5 — Release packaging
+### Task 25.5 — Release packaging
 
 GitHub Actions for prebuilt binaries (Windows, macOS, Linux). Versioned release (v1.0.0). Tag the commit.
 
 ---
 
-### Deliverables — Phase 21
+### Deliverables — Phase 25
 
 - [ ] No unhandled panics in normal operation
 - [ ] Verified on at least 2 platforms

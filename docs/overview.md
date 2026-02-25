@@ -70,13 +70,31 @@ Handles all pixel computation, coloring, and anti-aliasing. Depends on `mandelbr
 
 ### `mandelbrust-app` — Application & UI
 
-Desktop application using `egui` / `eframe`. Contains:
+Desktop application using `egui` / `eframe`. The codebase is organized into focused modules:
 
 | Module | Contents |
 |---|---|
-| `main.rs` | `MandelbRustApp` — main application struct and all UI logic: rendering pipeline orchestration, keyboard/mouse input, HUD overlay (top-left, top-right toolbar, bottom-left, bottom-centre, bottom-right layout; see §9 HUD Layout), top-right Material Symbols icon toolbar with state-aware dimming, palette popup picker, fractal parameters panel (bottom-left), controls/help window, settings panel, bookmark explorer with favorites toggle, save/update dialogs, thumbnail caching with automatic invalidation |
-| `bookmarks.rs` | `Bookmark` data structure (self-contained with embedded base64 PNG thumbnail), `BookmarkStore` (one `.json` file per bookmark, immediate persistence, directory scanning), `LabelNode` for hierarchical label trees, `encode_thumbnail` / `decode_thumbnail` for inline image embedding, automatic legacy migration |
-| `preferences.rs` | `AppPreferences` — persistent user settings (window size, defaults, restore-last-view, configurable bookmarks directory). `LastView` for capturing/restoring the last exploration state |
+| `main.rs` | Module declarations and `fn main()` entry point (~20 lines) |
+| `app.rs` | `MandelbRustApp` struct definition, shared enums/constants (`FractalMode`, `ActiveDialog`, `BookmarkSnap`, etc.), constructor, palette/color helpers, `eframe::App` trait implementation, IO response polling |
+| `app_state.rs` | `AppScreen` enum — top-level state machine for dispatching between application screens |
+| `render_bridge.rs` | Background render worker types (`RenderRequest`, `RenderResponse`, `RenderPhase`, `JuliaGridRequest`) and worker thread functions. Render dispatch and response polling |
+| `navigation.rs` | Pan, zoom, view history (undo/redo), viewport resize, zoom-rect handling |
+| `input.rs` | Mouse event handling (drag, click, scroll), keyboard shortcuts |
+| `io_worker.rs` | `IoRequest`/`IoResponse` enums and dedicated I/O worker thread for file writes, deletes, and bookmark directory scans |
+| `bookmarks.rs` | `Bookmark` data structure (self-contained with embedded base64 PNG thumbnail), `BookmarkStore` (one `.json` file per bookmark, async persistence via IO worker, directory scanning), `LabelNode` for hierarchical label trees, `encode_thumbnail` / `decode_thumbnail` for inline image embedding, automatic legacy migration |
+| `preferences.rs` | `AppPreferences` — persistent user settings (window size, defaults, restore-last-view, configurable bookmarks directory), async saves via IO worker. `LastView` for capturing/restoring the last exploration state |
+| `color_profiles.rs` | Color profile I/O: list, load, and save `DisplayColorSettings` as JSON files |
+| `display_color.rs` | `DisplayColorSettings` struct and related types for palette mode, start-from, smooth coloring |
+| `app_dir.rs` | Executable directory helper for locating data files |
+| `j_preview.rs` | J preview panel render request/response logic |
+| `ui/menu_bar.rs` | Persistent top menu bar (File, Edit, Fractal, View, Help), About dialog, coordinate copy, fractal mode switching, AA cycling |
+| `ui/toolbar.rs` | Top-right Material Symbols icon toolbar with state-aware dimming |
+| `ui/hud.rs` | Top-left viewport info, bottom-centre render stats, J-preview and minimap drawing |
+| `ui/minimap.rs` | Minimap viewport calculations, revision tracking, render request/response handling |
+| `ui/settings.rs` | Settings panel (window size, bookmarks directory, minimap, Julia explorer, opacity) |
+| `ui/help.rs` | Controls & shortcuts window |
+| `ui/bookmarks.rs` | Bookmark explorer window, save/update dialogs, thumbnail caching with LRU eviction, bookmark grid, label tree |
+| `ui/julia_explorer.rs` | Julia C Explorer grid (central panel mode) |
 
 ---
 
@@ -223,8 +241,11 @@ Multithreading is a **core requirement**, not an optimization.
 - **Palette popup picker** — clicking the palette icon in the toolbar opens a popup showing all palettes with color gradient preview swatches; clicking a palette selects it immediately
 - Architecture allows future palette editor / histogram coloring. **Planned:** A **Display/color settings** panel (replacing the palette icon) with full control over palette mode (cycles vs cycle length), start-from black/white, log-log/smooth toggle, and **color profiles** (one file per profile in a `color_profiles/` folder). See **§13 Planned features** and [Features_to_add.md](Features_to_add.md).
 
+### Menu Bar
+A persistent menu bar sits at the very top of the window, rendered via `egui::TopBottomPanel::top` so it reserves space before the viewport. It is always visible — hiding the HUD does not hide the menu bar, and it appears in every application screen (fractal explorer, bookmark browser, Julia C Explorer, main menu). Menus: **File** (Save Bookmark, Open Bookmarks, Export Image placeholder, Quit), **Edit** (Copy Coordinates, Reset View), **Fractal** (Switch Mandelbrot/Julia, Julia C Explorer), **View** (toggle HUD/minimap/J preview/crosshair, cycle AA, settings), **Help** (Keyboard Shortcuts, About). All top-anchored HUD elements are dynamically offset below the menu bar using the captured panel height.
+
 ### HUD Layout
-The HUD is distributed across several screen areas for minimal visual intrusion. Pressing **H** hides everything; all overlays, toolbar, panels, and floating windows disappear together.
+The HUD is distributed across several screen areas for minimal visual intrusion. Pressing **H** hides everything except the menu bar; all other overlays, toolbar, panels, and floating windows disappear together.
 
 | Area | Content |
 |---|---|

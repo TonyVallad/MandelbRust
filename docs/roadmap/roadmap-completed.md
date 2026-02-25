@@ -169,3 +169,30 @@ Reference: [Features_to_add.md](../Features_to_add.md) §3.
 - [x] `render_for_mode()` auto-selects DD path when `scale < 1e-13`.
 - [x] HUD shows "Precision: f64" or "Precision: f64×2"; precision warning moved to `scale < 1e-28`.
 - [x] All zoom/pan operations (scroll zoom, drag pan, arrow-key pan, zoom-rect) are DD-aware.
+
+---
+
+## Phase 12 — Code Reorganization
+
+**Objective:** Restructure the application codebase so that each concern lives in its own module or file, preparing for the upcoming main menu, menu bar, and HUD rework.
+
+- [x] App-level state machine (`AppScreen` enum in `app_state.rs`) ready for future screens (main menu, bookmark browser, Julia C Explorer)
+- [x] `main.rs` reduced to ~20 lines (module declarations + `main()`); all logic split into focused modules: `app.rs` (core struct, constructor, enums, `eframe::App` impl), `render_bridge.rs` (background render workers), `navigation.rs` (pan, zoom, history), `input.rs` (mouse/keyboard), `io_worker.rs` (file I/O thread), and a `ui/` subdirectory (`toolbar`, `hud`, `minimap`, `settings`, `help`, `bookmarks`, `julia_explorer`)
+- [x] `ActiveDialog` enum replaces mutually exclusive boolean flags (`show_save_dialog`, `show_update_or_save_dialog`); independent floating panels kept as separate booleans to preserve co-existence behaviour
+- [x] Dedicated I/O worker thread (`io_worker.rs`) handles all file writes, deletes, and directory scans via `mpsc` channels; `BookmarkStore` and `AppPreferences` dispatch file operations off the UI thread, falling back to synchronous I/O at startup
+- [x] Thumbnail cache and failed-thumbnails set keyed by stable string IDs (bookmark filename) instead of vector indices; bounded LRU eviction (max 64 entries); unnecessary `thumbnail_cache.clear()` calls removed after sort operations
+- [x] `BookmarkSnap` refactored from a tuple type alias to a proper struct for clarity
+- [x] Application behaves identically to before
+
+---
+
+## Phase 13 — Menu Bar
+
+**Objective:** Add a persistent menu bar at the top of the window, visible in every screen and when the HUD is hidden.
+
+- [x] Menu bar implemented via `egui::TopBottomPanel::top` with `egui::MenuBar`, drawn before the central panel to reserve vertical space
+- [x] Five menus: **File** (Save Bookmark, Open Bookmarks, Export Image placeholder, Quit), **Edit** (Copy Coordinates, Reset View), **Fractal** (Switch to Mandelbrot/Julia, Julia C Explorer), **View** (Toggle HUD/Minimap/J Preview/Crosshair, Cycle AA, Settings), **Help** (Keyboard Shortcuts, About MandelbRust)
+- [x] All menu items wired to existing app actions; keyboard shortcut hints displayed next to items; Export Image greyed out with "Coming in a future update" tooltip
+- [x] Menu bar height captured at render time and used to offset all top-anchored HUD elements (top-left viewport info, top-right toolbar, display/color panel, cursor coordinates)
+- [x] Menu bar stays visible when HUD is hidden; HUD elements no longer overlap the menu bar
+- [x] About MandelbRust dialog window with project name, description, and GitHub link

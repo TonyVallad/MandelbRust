@@ -109,9 +109,13 @@ Pressing **S** after navigating from a bookmark offers to **update it in-place**
 
 The bookmarks directory is configurable from Settings with a native folder picker.
 
+### Menu bar
+
+A persistent menu bar at the top of the window provides quick access to all major features: **File** (bookmarks, export, quit), **Edit** (copy coordinates, reset view), **Fractal** (switch mode, Julia C Explorer), **View** (toggle HUD/minimap/J preview/crosshair, cycle AA, settings), and **Help** (shortcuts, about). The menu bar is always visible, even when the HUD is hidden.
+
 ### HUD and toolbar
 
-The heads-up display is distributed across the screen corners for minimal intrusion:
+The heads-up display is distributed across the screen corners for minimal intrusion (all elements are positioned below the menu bar):
 
 | Area | Content |
 |------|---------|
@@ -122,7 +126,7 @@ The heads-up display is distributed across the screen corners for minimal intrus
 | **Bottom-centre** | Render stats: phase, timing, tile counts, AA status |
 | **Bottom-right** | J preview panel (when on) and minimap (when on) |
 
-Press **H** to hide everything at once. All panels share a unified style with configurable background opacity (65% default).
+Press **H** to hide everything except the menu bar. All HUD panels share a unified style with configurable background opacity (65% default).
 
 ### Session persistence
 
@@ -208,10 +212,28 @@ cargo bench -p mandelbrust-render
 
 ```
 MandelbRust/
-  mandelbrust-core/     # math, fractals, iteration engine
-  mandelbrust-render/   # tiled renderer, coloring, multithreading
-  mandelbrust-app/      # UI and user interaction
-  docs/                 # project documentation
+  mandelbrust-core/       # math, fractals, iteration engine
+  mandelbrust-render/     # tiled renderer, coloring, multithreading
+  mandelbrust-app/        # UI and user interaction
+    src/
+      main.rs             # entry point (~20 lines)
+      app.rs              # core struct, constructor, shared types
+      render_bridge.rs    # background render workers
+      navigation.rs       # pan, zoom, view history
+      input.rs            # mouse/keyboard event handling
+      io_worker.rs        # file I/O worker thread
+      bookmarks.rs        # bookmark data and persistence
+      preferences.rs      # user preferences
+      ui/                 # UI modules
+        menu_bar.rs       # persistent top menu bar
+        toolbar.rs        # icon toolbar
+        hud.rs            # viewport info, render stats
+        minimap.rs        # minimap panel
+        settings.rs       # settings panel
+        help.rs           # shortcuts window
+        bookmarks.rs      # bookmark explorer UI
+        julia_explorer.rs # Julia C Explorer grid
+  docs/                   # project documentation
 ```
 
 ## Documentation
