@@ -131,14 +131,14 @@ impl MandelbRustApp {
                             self.skip_preview_id = 0;
                             self.render_phase = RenderPhase::Refining;
                         } else {
-                            self.apply_result(ctx, result);
+                            self.apply_result(ctx, result, false);
                             self.render_phase = RenderPhase::Refining;
                         }
                     }
                 }
                 RenderResponse::Final { id, result } => {
                     if id == self.render_id && !result.cancelled {
-                        self.apply_result(ctx, result);
+                        self.apply_result(ctx, result, true);
                         self.render_phase = RenderPhase::Done;
                     }
                 }
@@ -146,7 +146,12 @@ impl MandelbRustApp {
         }
     }
 
-    pub(crate) fn apply_result(&mut self, ctx: &egui::Context, result: RenderResult) {
+    pub(crate) fn apply_result(
+        &mut self,
+        ctx: &egui::Context,
+        result: RenderResult,
+        is_final: bool,
+    ) {
         self.render_time = result.elapsed;
         self.tiles_rendered = result.tiles_rendered;
         self.tiles_mirrored = result.tiles_mirrored;
@@ -160,6 +165,10 @@ impl MandelbRustApp {
         self.texture = Some(ctx.load_texture("fractal", image, egui::TextureOptions::LINEAR));
         self.current_iterations = Some(result.iterations);
         self.current_aa = result.aa_samples;
+
+        if is_final {
+            self.update_resume_preview(ctx, &buffer.pixels, buffer.width, buffer.height);
+        }
 
         self.drag_preview = None;
         self.draw_offset = egui::Vec2::ZERO;

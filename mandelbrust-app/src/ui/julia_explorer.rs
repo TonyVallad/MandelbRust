@@ -20,7 +20,7 @@ impl MandelbRustApp {
             .frame(egui::Frame::NONE)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("\u{2190} Back").clicked() {
+                    if ui.button("< Back").clicked() {
                         go_back = true;
                     }
                     ui.add_space(8.0);

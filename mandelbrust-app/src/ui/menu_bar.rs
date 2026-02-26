@@ -27,6 +27,9 @@ impl MandelbRustApp {
             if self.screen != AppScreen::MainMenu {
                 if ui.button("Main Menu").clicked() {
                     ui.close();
+                    if self.screen == AppScreen::FractalExplorer {
+                        self.save_exploration_state();
+                    }
                     self.screen = AppScreen::MainMenu;
                 }
                 ui.separator();

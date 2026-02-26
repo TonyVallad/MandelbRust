@@ -50,7 +50,7 @@ impl MandelbRustApp {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("\u{2190} Back").clicked() {
+                    if ui.button("< Back").clicked() {
                         go_back = true;
                     }
                     ui.add_space(8.0);
@@ -58,10 +58,12 @@ impl MandelbRustApp {
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let can_open = self.browser_selected_bookmark.is_some();
-                        if ui
-                            .add_enabled(can_open, egui::Button::new("Open"))
-                            .clicked()
-                        {
+                        let hud_alpha = (self.preferences.hud_panel_opacity.clamp(0.0, 1.0)
+                            * 255.0)
+                            .round() as u8;
+                        let btn = egui::Button::new("Open Bookmark")
+                            .fill(egui::Color32::from_black_alpha(hud_alpha));
+                        if ui.add_enabled(can_open, btn).clicked() {
                             jump_idx = self.browser_selected_bookmark;
                         }
                     });
