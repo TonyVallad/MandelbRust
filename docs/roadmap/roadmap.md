@@ -1,6 +1,6 @@
 # MandelbRust — Roadmap
 
-**Next development focus: Phase 15 — Image Export.**
+**Next development focus: Phase 16 — HUD Modifications.**
 
 Each phase is a self-contained unit of work that produces a testable, working state.
 
@@ -26,7 +26,6 @@ Each phase is a self-contained unit of work that produces a testable, working st
 
 | Phase | Description |
 |-------|-------------|
-| 15 | Image Export |
 | 16 | HUD Modifications |
 | 17 | Minimap Size Controls |
 | 18 | Deep Zoom: Perturbation Theory |
@@ -41,139 +40,6 @@ Each phase is a self-contained unit of work that produces a testable, working st
 Feature specifications for Phases 16–17: [Features_to_add.md](../Features_to_add.md).
 
 Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis.md).
-
----
-
-## Phase 15 — Image Export
-
-**Objective:** Support high-quality still image exports independent of screen resolution, using the current display/color settings. Exported PNGs are saved to organised per-fractal subdirectories with fractal metadata embedded in the file.
-
-### Task 15.1 — Offscreen renderer
-
-**File:** new function in `mandelbrust-render/src/renderer.rs`
-
-Create a function `render_offscreen()` that:
-1. Accepts `viewport: Viewport`, `fractal: &F`, `cancel: &RenderCancel`, `aa_level: u32`, `display_color: &DisplayColorSettings`, `palette: &Palette`.
-2. Builds a new `Viewport` at the requested export resolution (width × height) while preserving the same complex-plane center and scale as the viewer.
-3. Renders the full iteration buffer at that resolution.
-4. Runs AA if `aa_level > 0`.
-5. Colorizes the result using the full `DisplayColorSettings` (palette, cycles/cycle length, start-from black/white, smooth coloring).
-6. Returns `Result<Vec<u8>>` (RGBA pixel buffer) or an error if cancelled.
-
-This function must be usable without any UI dependencies — it lives in the `mandelbrust-render` crate.
-
-**Verify:** Unit test that renders a 256×256 image and checks the output buffer length is `256 × 256 × 4`.
-
----
-
-### Task 15.2 — PNG export with metadata
-
-**File:** new `mandelbrust-render/src/export.rs` module (or extend `lib.rs`)
-
-Create a function `export_png()` that:
-1. Accepts `pixels: &[u8]`, `width: u32`, `height: u32`, `path: &Path`, `metadata: &ExportMetadata`.
-2. Writes the RGBA buffer as a PNG file.
-3. Embeds fractal metadata as **PNG tEXt chunks** (key-value text pairs). Use the lower-level `png` crate encoder (already an indirect dependency via `image`) to write custom text chunks.
-4. Returns `Result<()>`.
-
-**`ExportMetadata`** struct contains:
-- Fractal type (Mandelbrot / Julia)
-- Center coordinates (full double-double precision string)
-- Zoom level
-- Max iterations
-- Escape radius
-- Julia C coordinates (if applicable)
-- AA level
-- Palette name and display/color settings summary
-- Export resolution
-- Application name and version
-
-Standard PNG tEXt keys to use: `Software` ("MandelbRust"), `Description` (human-readable summary), plus custom keys prefixed for clarity (e.g. `MandelbRust.FractalType`, `MandelbRust.CenterRe`, `MandelbRust.CenterIm`, `MandelbRust.Zoom`, `MandelbRust.MaxIterations`, `MandelbRust.JuliaC_Re`, `MandelbRust.JuliaC_Im`, `MandelbRust.Palette`, `MandelbRust.AALevel`). Tools like `exiftool`, IrfanView, and XnView can read these.
-
-**Verify:** Unit test that writes a small test image to a temp file, reads it back, and verifies the metadata keys are present.
-
----
-
-### Task 15.3 — Export dialog UI
-
-**File:** new file `mandelbrust-app/src/ui/export.rs`
-
-An `egui::Window` dialog that opens when the user triggers an image export (keyboard shortcut `E`, menu bar File → Export Image, or toolbar icon).
-
-**Dialog fields:**
-
-1. **Image name** — text input for the filename (without `.png` extension). If left empty, an auto-generated default is used: `{FractalName}_{MaxIterations}_{Width}x{Height}` (e.g. `Mandelbrot_1000_3840x2160`).
-2. **Resolution** — a dropdown with common predefined resolutions:
-   - 1280×720 (HD)
-   - 1920×1080 (Full HD)
-   - 2560×1440 (QHD)
-   - 3840×2160 (4K UHD)
-   - 5120×2880 (5K)
-   - 7680×4320 (8K UHD)
-   - **Custom** — when selected, shows editable width and height fields
-   - **Default selection:** detect the current monitor resolution via `eframe`/`egui` and select the closest predefined entry, falling back to 1920×1080 if detection fails.
-3. **Max iterations** — numeric input, defaulting to the current `max_iterations` from the viewer.
-4. **Anti-aliasing** — dropdown: Off, 2×2, 4×4.
-5. **Color settings** — not editable in this dialog; a read-only note states "Using current display/color settings" (palette name, mode, smooth coloring status shown as informational text).
-
-**Buttons:**
-- **Export** — validates inputs, builds the export request, and closes the dialog.
-- **Cancel** — closes without exporting.
-
-**Verify:** Dialog opens via `E` key and menu bar. Fields are pre-populated with sensible defaults. Export button is disabled while fields are invalid (e.g. zero resolution).
-
----
-
-### Task 15.4 — Export output path and execution
-
-**Files:** `mandelbrust-app/src/ui/export.rs`, `mandelbrust-app/src/app_dir.rs`, `mandelbrust-app/src/render_bridge.rs`
-
-1. **Output directory:** exported images go to `<exe_dir>/images/{fractal_name}/` where `{fractal_name}` is the lowercase fractal type (e.g. `images/mandelbrot/`, `images/julia/`). The directory is created automatically if it doesn't exist. This structure is extensible for future fractal types.
-2. **Filename collision:** if the target file already exists, append a numeric suffix (`_001`, `_002`, …) to avoid overwriting.
-3. **Non-blocking render:** on "Export", send an `ExportRequest` to the render thread (or a dedicated export thread) via `mpsc`. The export runs in the background using `render_offscreen()`, then writes the PNG via `export_png()`.
-4. **Progress:** show a progress indicator in the UI (e.g. bottom-centre or a small overlay) with a cancel button. Use the same atomic progress tracking as the main render pipeline.
-5. **Completion:** on success, log the file path at INFO level and briefly show a success notification in the UI. On failure, show an error notification.
-
-**Verify:** Exported PNG appears in the correct directory. Filename defaults are correct. Duplicate filenames get numeric suffixes. Export can be cancelled mid-render.
-
----
-
-### Task 15.5 — Wire up keyboard shortcut and menu bar
-
-**Files:** `mandelbrust-app/src/input.rs`, `mandelbrust-app/src/ui/menu_bar.rs`
-
-1. **`E` key** opens the export dialog (suppressed when a text field is focused).
-2. **File → Export Image** menu item opens the same dialog (remove the current "disabled placeholder" state).
-3. The export dialog is only available from the `FractalExplorer` screen (greyed out / hidden on other screens).
-
-**Verify:** `E` key and menu item both open the export dialog. Not available from the main menu or bookmark browser.
-
----
-
-### Task 15.6 — Update documentation
-
-**Files:** `docs/overview.md`, `README.md`
-
-1. Update the "Export System" section in `overview.md`: remove "(Planned)" from "Image Export", describe the offscreen renderer, export dialog, output paths, metadata embedding, and supported options.
-2. Add image export to the features section in `README.md`.
-3. Add the `E` key to the keyboard shortcuts table in both files.
-
-**Verify:** Documentation matches implemented behaviour.
-
----
-
-### Deliverables — Phase 15
-
-- [ ] `render_offscreen()` function in the render crate (no UI dependency)
-- [ ] `export_png()` with PNG tEXt metadata embedding
-- [ ] Export dialog with image name, resolution presets/custom, max iterations, AA dropdown
-- [ ] Auto-generated default filename (`{Fractal}_{Iterations}_{WxH}`)
-- [ ] Output to `images/{fractal_name}/` with collision-safe filenames
-- [ ] Current display/color settings used for colorization
-- [ ] Non-blocking export with progress and cancellation
-- [ ] `E` keyboard shortcut and File → Export Image menu item
-- [ ] Fractal metadata embedded in PNG (coordinates, zoom, iterations, palette, etc.)
-- [ ] Documentation updated
 
 ---
 

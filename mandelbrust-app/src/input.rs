@@ -212,5 +212,9 @@ impl MandelbRustApp {
                 self.needs_render = true;
             }
         }
+
+        if ctx.input(|i| i.key_pressed(egui::Key::E)) {
+            self.open_export_dialog(ctx);
+        }
     }
 }

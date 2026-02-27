@@ -14,7 +14,7 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 
 ## Status
 
-**Active development** — the core explorer is fully functional with real-time rendering, deep zoom (double-double precision up to ~10^28x), multiple color palettes, adaptive anti-aliasing, a persistent bookmark system, a main menu at launch, and an optimized release profile. See the [roadmap](docs/roadmap/roadmap.md) for what's coming next.
+**Active development** — the core explorer is fully functional with real-time rendering, deep zoom (double-double precision up to ~10^28x), multiple color palettes, adaptive anti-aliasing, a persistent bookmark system, a main menu at launch, high-resolution image export with metadata, and an optimized release profile. See the [roadmap](docs/roadmap/roadmap.md) for what's coming next.
 
 ---
 
@@ -113,9 +113,23 @@ Pressing **S** after navigating from a bookmark offers to **update it in-place**
 
 The bookmarks directory is configurable from Settings with a native folder picker.
 
+### Image export
+
+<p align="center">
+  <img src="docs/img/exported_image_example.png" alt="Exported Mandelbrot fractal image" width="800">
+</p>
+
+Export the current view as a high-resolution PNG at any resolution from HD to 8K and beyond. Press **E** or use **File → Export Image** to open the export dialog, which provides full control over:
+
+- **Resolution** — predefined presets (720p through 8K) or custom dimensions
+- **Max iterations** and **anti-aliasing** (Off / 2×2 / 4×4)
+- **Color settings** — palette, palette mode (by cycles / by cycle length), start-from (none/black/white), smooth coloring — all pre-filled from the current viewer settings but independently editable for the export
+
+Exported images preserve the exact visible region regardless of resolution, and embed fractal metadata (coordinates, zoom, iterations, palette, Julia C, etc.) as PNG text chunks readable by exiftool and similar tools. Files are saved to organised subdirectories (`images/mandelbrot/`, `images/julia/`) with collision-safe filenames. Exports run in the background with a progress bar and cancel button.
+
 ### Menu bar
 
-A persistent menu bar at the top of the window provides quick access to all major features: **File** (bookmarks, export, quit), **Edit** (copy coordinates, reset view), **Fractal** (switch mode, Julia C Explorer), **View** (toggle HUD/minimap/J preview/crosshair, cycle AA, settings), and **Help** (shortcuts, about). The menu bar is always visible, even when the HUD is hidden.
+A persistent menu bar at the top of the window provides quick access to all major features: **File** (main menu, bookmarks, export image, quit), **Edit** (copy coordinates, reset view), **Fractal** (switch mode, Julia C Explorer), **View** (toggle HUD/minimap/J preview/crosshair, cycle AA, settings), and **Help** (shortcuts, about). The menu bar is always visible, even when the HUD is hidden.
 
 ### HUD and toolbar
 
@@ -166,6 +180,7 @@ Old save files from [MSZP](https://github.com/TonyVallad/MSZP) (the QBasic prede
 | `A` | Cycle AA (Off / 2x2 / 4x4) |
 | `S` | Save / update bookmark |
 | `B` | Toggle bookmark explorer |
+| `E` | Open export dialog |
 | `M` | Toggle minimap |
 | `J` | Toggle J preview panel |
 | `Backspace` | View history back |
@@ -188,7 +203,7 @@ Press the help icon in the toolbar to see the full controls reference in-app.
 | UI | `egui` / `eframe`, `egui_material_icons` |
 | Parallelism | `rayon` |
 | Benchmarking | `criterion` |
-| Image encoding | `image` |
+| Image encoding | `image`, `png` |
 | Base64 encoding | `base64` |
 | Serialization | `serde`, `serde_json` |
 | Config paths | `directories` |
@@ -232,6 +247,7 @@ MandelbRust/
         main_menu.rs         # main menu screen, tile layout, preview management
         menu_bar.rs          # persistent top menu bar
         bookmark_browser.rs  # full-window bookmark browser
+        export.rs            # image export dialog and background worker
         toolbar.rs           # icon toolbar
         hud.rs               # viewport info, render stats
         minimap.rs           # minimap panel

@@ -251,6 +251,10 @@ pub(crate) struct MandelbRustApp {
     pub(crate) j_preview_revision: u64,
     pub(crate) j_preview_cancel: Arc<RenderCancel>,
     pub(crate) last_j_preview_cursor: Option<Complex>,
+
+    // Image export
+    pub(crate) export_state: crate::ui::export::ExportState,
+    pub(crate) egui_ctx: egui::Context,
 }
 
 // ---------------------------------------------------------------------------
@@ -451,6 +455,9 @@ impl MandelbRustApp {
             j_preview_revision: 0,
             j_preview_cancel,
             last_j_preview_cursor: None,
+
+            export_state: crate::ui::export::ExportState::new(),
+            egui_ctx: egui_ctx.clone(),
         };
         color_profiles::ensure_default_profile();
         app
@@ -764,6 +771,7 @@ impl eframe::App for MandelbRustApp {
         self.show_controls_panel(ctx);
         self.show_help_window(ctx);
         self.draw_about_window(ctx);
+        self.draw_export_dialog(ctx);
 
         let text_editing = ctx.memory(|m| m.focused().is_some());
         if !text_editing {

@@ -66,6 +66,7 @@ Handles all pixel computation, coloring, and anti-aliasing. Depends on `mandelbr
 | `iteration_buffer.rs` | `IterationBuffer` — stores `IterationResult` per pixel, supports tile blitting, mirroring, and `shift()` for pan optimization |
 | `palette.rs` | `Palette` — gradient LUT with 256 colors. Smooth coloring formula `ν = n + 1 − log₂(ln(\|zₙ\|))`. Five built-in palettes (Classic, Fire, Ocean, Neon, Grayscale). `colorize()`, `colorize_aa()`, `preview_colors()` |
 | `aa.rs` | `AaSamples` — adaptive anti-aliasing. Sparse storage for boundary pixel supersamples. `compute_aa()` detects edges where iteration class differs between neighbors, then supersamples only those pixels (2×2 or 4×4) |
+| `export.rs` | `ExportMetadata` struct, `export_png()` — PNG encoding with tEXt metadata chunks via the `png` crate |
 | `error.rs` | `RenderError` — rendering error types |
 
 ### `mandelbrust-app` — Application & UI
@@ -96,6 +97,7 @@ Desktop application using `egui` / `eframe`. The codebase is organized into focu
 | `ui/settings.rs` | Settings panel (window size, bookmarks directory, minimap, Julia explorer, opacity) |
 | `ui/help.rs` | Controls & shortcuts window |
 | `ui/bookmarks.rs` | Bookmark explorer overlay, save/update dialogs, thumbnail caching with LRU eviction, bookmark grid, label tree |
+| `ui/export.rs` | Export dialog UI, `ExportState`, background export worker, resolution presets, color settings controls |
 | `ui/julia_explorer.rs` | Julia C Explorer grid (central panel and full-window modes) |
 
 ---
@@ -124,6 +126,7 @@ MandelbRust uses a continuous camera model over the complex plane.
 | **`A`** | Cycle anti-aliasing level (Off → 2×2 → 4×4 → Off) |
 | **`S`** | Save bookmark (or update/save-new if currently viewing a bookmark) |
 | **`B`** | Toggle bookmark explorer |
+| **`E`** | Open export dialog |
 | **`J`** | Toggle J preview panel (above minimap): in Mandelbrot, live Julia preview at cursor; in Julia, Mandelbrot preview with crosshair at c |
 | **`Backspace`** | Navigate view history (back) |
 | **`Shift+Backspace`** | Navigate view history (forward) |
@@ -254,7 +257,7 @@ On launch, the application displays a full-window main menu instead of immediate
 A vertical separator visually distinguishes "Resume Exploration" from the other tiles. Each tile has a preview image area (cover-mode display preserving aspect ratio), a cyan title, and centered rich-text descriptions with bold markup. The fractal explorer is not loaded until a selection is made.
 
 ### Menu Bar
-A persistent menu bar sits at the very top of the window, rendered via `egui::TopBottomPanel::top` so it reserves space before the viewport. It is always visible — hiding the HUD does not hide the menu bar, and it appears in every application screen (main menu, fractal explorer, bookmark browser, Julia C Explorer). Menus: **File** (Main Menu, Save Bookmark, Open Bookmarks, Export Image placeholder, Quit), **Edit** (Copy Coordinates, Reset View), **Fractal** (Switch Mandelbrot/Julia, Julia C Explorer), **View** (toggle HUD/minimap/J preview/crosshair, cycle AA, settings), **Help** (Keyboard Shortcuts, About). Selecting "Main Menu" from the fractal explorer saves the current exploration state before transitioning. All top-anchored HUD elements are dynamically offset below the menu bar using the captured panel height.
+A persistent menu bar sits at the very top of the window, rendered via `egui::TopBottomPanel::top` so it reserves space before the viewport. It is always visible — hiding the HUD does not hide the menu bar, and it appears in every application screen (main menu, fractal explorer, bookmark browser, Julia C Explorer). Menus: **File** (Main Menu, Save Bookmark, Open Bookmarks, Export Image, Quit), **Edit** (Copy Coordinates, Reset View), **Fractal** (Switch Mandelbrot/Julia, Julia C Explorer), **View** (toggle HUD/minimap/J preview/crosshair, cycle AA, settings), **Help** (Keyboard Shortcuts, About). Selecting "Main Menu" from the fractal explorer saves the current exploration state before transitioning. All top-anchored HUD elements are dynamically offset below the menu bar using the captured panel height.
 
 ### HUD Layout
 The HUD is distributed across several screen areas for minimal visual intrusion. Pressing **H** hides everything except the menu bar; all other overlays, toolbar, panels, and floating windows disappear together.
@@ -358,11 +361,17 @@ Preferences are stored as a JSON file in the OS config directory, using the `dir
 
 ## 11. Export System
 
-### Image Export (Planned)
-- High-resolution PNG export
-- Offscreen render at arbitrary resolution
-- Independent of viewport resolution
-- Optional supersampling for final quality
+### Image Export
+High-quality PNG export at any resolution, independent of the viewer's window size.
+
+- **Export dialog** — opens via `E` key or **File → Export Image**. Provides controls for image name, resolution (presets from HD to 8K, or custom), max iterations, anti-aliasing (Off / 2×2 / 4×4), and full color settings (palette, palette mode, start-from, smooth coloring).
+- **Color settings** — initialized from the viewer's current `DisplayColorSettings` but fully editable in the dialog. Changes in the export dialog do not affect the viewer.
+- **Viewport preservation** — the export dynamically recalculates the scale so that the exported image covers the same complex-plane region as the viewer, regardless of export resolution.
+- **Color fidelity** — cycle length is computed from the base `max_iterations` (matching the viewer's coloring), ensuring identical palette mapping even when adaptive iterations is enabled.
+- **Output** — PNGs are saved to `<exe_dir>/images/{fractal_name}/` (e.g. `images/mandelbrot/`, `images/julia/`). Filename collisions are resolved with numeric suffixes (`_001`, `_002`, …).
+- **Metadata** — fractal parameters (center, zoom, iterations, escape radius, Julia C, palette, AA level, resolution) are embedded as PNG tEXt chunks, readable by exiftool, IrfanView, XnView, etc.
+- **Background rendering** — the export runs on a dedicated thread with a progress bar and cancel button in the dialog. A success/error notification is shown on completion.
+- **Default filename** — auto-generated as `{Fractal}_{MaxIter}_{WxH}` if the name field is left empty.
 
 ### Animation Export (Planned)
 - Camera interpolation between bookmarks (logarithmic scale interpolation for perceptually smooth zoom)
@@ -382,7 +391,7 @@ Animations are deterministic and reproducible.
 | UI | `egui` / `eframe`, `egui_material_icons` (Material Symbols icon font) |
 | Parallelism | `rayon` |
 | Benchmarking | `criterion` |
-| Image encoding | `image` (PNG feature) |
+| Image encoding | `image` (PNG feature), `png` (direct encoder for export metadata) |
 | Base64 encoding | `base64` (for embedding thumbnails in bookmark files) |
 | Serialization | `serde`, `serde_json` |
 | Config paths | `directories` |

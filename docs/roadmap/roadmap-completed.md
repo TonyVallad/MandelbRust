@@ -218,3 +218,22 @@ Reference: [Features_to_add.md](../Features_to_add.md) §3.
 - [x] Menu bar updated: "Main Menu" item in File menu (saves exploration state when leaving fractal explorer), context-aware enable/disable of Save Bookmark and Open Bookmarks
 - [x] Escape key handling is screen-aware: returns to main menu from BookmarkBrowser and JuliaCExplorer
 - [x] `app_dir.rs` extended with `images_directory()` and `previews_directory()` helpers
+
+---
+
+## Phase 15 — Image Export
+
+**Objective:** Support high-quality still image exports independent of screen resolution, with full control over color settings. Exported PNGs are saved to organised per-fractal subdirectories with fractal metadata embedded in the file.
+
+- [x] `export_png()` function in `mandelbrust-render/src/export.rs` using the `png` crate for direct PNG encoding with custom tEXt chunk metadata (Software, Description, and MandelbRust.* keys for fractal type, center, zoom, iterations, escape radius, Julia C, AA level, palette, smooth coloring, resolution)
+- [x] `ExportMetadata` struct capturing all relevant fractal and render parameters for embedding
+- [x] Export dialog (`mandelbrust-app/src/ui/export.rs`): egui window with image name (auto-generated default `{Fractal}_{Iter}_{WxH}`), resolution presets (HD through 8K) plus custom option, max iterations, AA dropdown (Off / 2x2 / 4x4)
+- [x] Full editable color settings in the export dialog: palette picker, palette mode (by cycles / by cycle length with numeric input), start-from (None / Black / White with threshold controls), smooth coloring checkbox — all initialized from the viewer's current display/color settings
+- [x] Monitor resolution auto-detection for default resolution preset, falling back to 1920x1080
+- [x] Export viewport preserves the viewer's visible complex-plane region at any export resolution (dynamic scale recalculation prevents zoomed-out exports at higher resolutions)
+- [x] Color fidelity: export uses the same base `max_iterations` as the viewer for cycle length computation, ensuring identical palette mapping regardless of adaptive iterations
+- [x] Output to `images/{fractal_name}/` with collision-safe filenames (numeric `_001`, `_002` suffixes)
+- [x] Non-blocking background export on a dedicated thread with progress bar and cancel button
+- [x] Success/error notification overlay with 5-second fade-out
+- [x] `E` keyboard shortcut and File → Export Image menu item (only available from FractalExplorer screen)
+- [x] Unit tests for PNG creation and metadata embedding

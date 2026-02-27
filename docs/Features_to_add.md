@@ -2,7 +2,7 @@
 
 This document lists planned features for the MandelbRust project and describes how each should behave.
 
-**Note:** Previously planned features (minimap, Julia C Explorer, J preview panel, display/color settings, HUD layout, main menu at launch) have been implemented and are no longer listed here.
+**Note:** Previously planned features (minimap, Julia C Explorer, J preview panel, display/color settings, HUD layout, main menu at launch, image export) have been implemented and are no longer listed here.
 
 ---
 

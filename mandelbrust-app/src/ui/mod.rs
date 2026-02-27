@@ -1,5 +1,6 @@
 pub(crate) mod bookmark_browser;
 pub(crate) mod bookmarks;
+pub(crate) mod export;
 pub(crate) mod help;
 pub(crate) mod hud;
 pub(crate) mod julia_explorer;

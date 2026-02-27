@@ -66,13 +66,13 @@ impl MandelbRustApp {
                 }
             }
             ui.separator();
-            let export_item = egui::Button::new("Export Image…");
+            let export_item = shortcut_item("Export Image\u{2026}", "E");
             if ui
-                .add_enabled(false, export_item)
-                .on_disabled_hover_text("Coming in a future update")
+                .add_enabled(in_explorer, export_item)
                 .clicked()
             {
                 ui.close();
+                self.open_export_dialog(ctx);
             }
             ui.separator();
             if ui.button("Quit").clicked() {

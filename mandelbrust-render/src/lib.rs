@@ -1,6 +1,7 @@
 pub mod aa;
 pub mod buffer;
 pub mod error;
+pub mod export;
 pub mod iteration_buffer;
 pub mod palette;
 pub mod renderer;
@@ -9,6 +10,7 @@ pub mod tile;
 pub use aa::{compute_aa, AaSamples};
 pub use buffer::RenderBuffer;
 pub use error::RenderError;
+pub use export::{export_png, ExportMetadata};
 pub use iteration_buffer::IterationBuffer;
 pub use palette::{builtin_palettes, ColorParams, Palette, StartFrom};
 pub use renderer::{render, RenderCancel, RenderResult};
