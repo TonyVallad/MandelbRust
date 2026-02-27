@@ -66,17 +66,39 @@ Handles all pixel computation, coloring, and anti-aliasing. Depends on `mandelbr
 | `iteration_buffer.rs` | `IterationBuffer` — stores `IterationResult` per pixel, supports tile blitting, mirroring, and `shift()` for pan optimization |
 | `palette.rs` | `Palette` — gradient LUT with 256 colors. Smooth coloring formula `ν = n + 1 − log₂(ln(\|zₙ\|))`. Five built-in palettes (Classic, Fire, Ocean, Neon, Grayscale). `colorize()`, `colorize_aa()`, `preview_colors()` |
 | `aa.rs` | `AaSamples` — adaptive anti-aliasing. Sparse storage for boundary pixel supersamples. `compute_aa()` detects edges where iteration class differs between neighbors, then supersamples only those pixels (2×2 or 4×4) |
+| `export.rs` | `ExportMetadata` struct, `export_png()` — PNG encoding with tEXt metadata chunks via the `png` crate |
 | `error.rs` | `RenderError` — rendering error types |
 
 ### `mandelbrust-app` — Application & UI
 
-Desktop application using `egui` / `eframe`. Contains:
+Desktop application using `egui` / `eframe`. The codebase is organized into focused modules:
 
 | Module | Contents |
 |---|---|
-| `main.rs` | `MandelbRustApp` — main application struct and all UI logic: rendering pipeline orchestration, keyboard/mouse input, HUD overlay (top-left, top-right toolbar, bottom-left, bottom-centre, bottom-right layout; see §9 HUD Layout), top-right Material Symbols icon toolbar with state-aware dimming, palette popup picker, fractal parameters panel (bottom-left), controls/help window, settings panel, bookmark explorer with favorites toggle, save/update dialogs, thumbnail caching with automatic invalidation |
-| `bookmarks.rs` | `Bookmark` data structure (self-contained with embedded base64 PNG thumbnail), `BookmarkStore` (one `.json` file per bookmark, immediate persistence, directory scanning), `LabelNode` for hierarchical label trees, `encode_thumbnail` / `decode_thumbnail` for inline image embedding, automatic legacy migration |
-| `preferences.rs` | `AppPreferences` — persistent user settings (window size, defaults, restore-last-view, configurable bookmarks directory). `LastView` for capturing/restoring the last exploration state |
+| `main.rs` | Module declarations and `fn main()` entry point (~20 lines) |
+| `app.rs` | `MandelbRustApp` struct definition, shared enums/constants (`FractalMode`, `ActiveDialog`, `BookmarkSnap`, etc.), constructor, palette/color helpers, `eframe::App` trait implementation (screen dispatcher), IO response polling |
+| `app_state.rs` | `AppScreen` enum — top-level state machine for dispatching between application screens (`MainMenu`, `FractalExplorer`, `BookmarkBrowser`, `JuliaCExplorer`) |
+| `render_bridge.rs` | Background render worker types (`RenderRequest`, `RenderResponse`, `RenderPhase`, `JuliaGridRequest`) and worker thread functions. Render dispatch and response polling. Triggers resume preview capture on final renders |
+| `navigation.rs` | Pan, zoom, view history (undo/redo), viewport resize, zoom-rect handling |
+| `input.rs` | Mouse event handling (drag, click, scroll), keyboard shortcuts, screen-aware Escape handling |
+| `io_worker.rs` | `IoRequest`/`IoResponse` enums and dedicated I/O worker thread for file writes, deletes, and bookmark directory scans |
+| `bookmarks.rs` | `Bookmark` data structure (self-contained with embedded base64 PNG thumbnail), `BookmarkStore` (one `.json` file per bookmark, async persistence via IO worker, directory scanning), `LabelNode` for hierarchical label trees, `encode_thumbnail` / `decode_thumbnail` for inline image embedding, automatic legacy migration |
+| `preferences.rs` | `AppPreferences` — persistent user settings (window size, defaults, restore-last-view, configurable bookmarks directory), async saves via IO worker. `LastView` for capturing/restoring the last exploration state |
+| `color_profiles.rs` | Color profile I/O: list, load, and save `DisplayColorSettings` as JSON files |
+| `display_color.rs` | `DisplayColorSettings` struct and related types for palette mode, start-from, smooth coloring |
+| `app_dir.rs` | Executable directory helper for locating data files, `images_directory()` and `previews_directory()` for preview image storage |
+| `j_preview.rs` | J preview panel render request/response logic |
+| `ui/menu_bar.rs` | Persistent top menu bar (File, Edit, Fractal, View, Help), About dialog, coordinate copy, fractal mode switching, AA cycling. "Main Menu" navigation with exploration state persistence |
+| `ui/main_menu.rs` | Full-window main menu with four tile options (Resume, Mandelbrot, Julia, Bookmark), preview image management (load/save PNGs, cover-mode display), rich-text rendering with bold markup, double-double precision coordinate formatting |
+| `ui/bookmark_browser.rs` | Full-window bookmark browser with tab bar, search, sort, label filter, bookmark grid, single/double-click selection, "Open Bookmark" button |
+| `ui/toolbar.rs` | Top-right Material Symbols icon toolbar with state-aware dimming |
+| `ui/hud.rs` | Top-left viewport info, bottom-centre render stats, J-preview and minimap drawing |
+| `ui/minimap.rs` | Minimap viewport calculations, revision tracking, render request/response handling |
+| `ui/settings.rs` | Settings panel (window size, bookmarks directory, minimap, Julia explorer, opacity) |
+| `ui/help.rs` | Controls & shortcuts window |
+| `ui/bookmarks.rs` | Bookmark explorer overlay, save/update dialogs, thumbnail caching with LRU eviction, bookmark grid, label tree |
+| `ui/export.rs` | Export dialog UI, `ExportState`, background export worker, resolution presets, color settings controls |
+| `ui/julia_explorer.rs` | Julia C Explorer grid (central panel and full-window modes) |
 
 ---
 
@@ -104,6 +126,7 @@ MandelbRust uses a continuous camera model over the complex plane.
 | **`A`** | Cycle anti-aliasing level (Off → 2×2 → 4×4 → Off) |
 | **`S`** | Save bookmark (or update/save-new if currently viewing a bookmark) |
 | **`B`** | Toggle bookmark explorer |
+| **`E`** | Open export dialog |
 | **`J`** | Toggle J preview panel (above minimap): in Mandelbrot, live Julia preview at cursor; in Julia, Mandelbrot preview with crosshair at c |
 | **`Backspace`** | Navigate view history (back) |
 | **`Shift+Backspace`** | Navigate view history (forward) |
@@ -223,8 +246,21 @@ Multithreading is a **core requirement**, not an optimization.
 - **Palette popup picker** — clicking the palette icon in the toolbar opens a popup showing all palettes with color gradient preview swatches; clicking a palette selects it immediately
 - Architecture allows future palette editor / histogram coloring. **Planned:** A **Display/color settings** panel (replacing the palette icon) with full control over palette mode (cycles vs cycle length), start-from black/white, log-log/smooth toggle, and **color profiles** (one file per profile in a `color_profiles/` folder). See **§13 Planned features** and [Features_to_add.md](Features_to_add.md).
 
+### Main Menu
+On launch, the application displays a full-window main menu instead of immediately loading the fractal explorer. The menu presents four horizontally arranged tiles on a black background:
+
+1. **Resume Exploration** — restores the last exploration state (fractal mode, viewport, display/color settings). Displays live parameters (center coordinates in double-double precision, zoom, iterations, Julia C if applicable) and a preview thumbnail that is automatically updated on every final render completion.
+2. **Mandelbrot Set** — opens a fresh Mandelbrot exploration with default settings.
+3. **Julia's Sets** — opens the Julia C Explorer as a full-window screen; selecting a C transitions to the fractal explorer in Julia mode.
+4. **Open Bookmark** — opens the bookmark browser as a full-window screen; selecting a bookmark transitions to the fractal explorer at that location.
+
+A vertical separator visually distinguishes "Resume Exploration" from the other tiles. Each tile has a preview image area (cover-mode display preserving aspect ratio), a cyan title, and centered rich-text descriptions with bold markup. The fractal explorer is not loaded until a selection is made.
+
+### Menu Bar
+A persistent menu bar sits at the very top of the window, rendered via `egui::TopBottomPanel::top` so it reserves space before the viewport. It is always visible — hiding the HUD does not hide the menu bar, and it appears in every application screen (main menu, fractal explorer, bookmark browser, Julia C Explorer). Menus: **File** (Main Menu, Save Bookmark, Open Bookmarks, Export Image, Quit), **Edit** (Copy Coordinates, Reset View), **Fractal** (Switch Mandelbrot/Julia, Julia C Explorer), **View** (toggle HUD/minimap/J preview/crosshair, cycle AA, settings), **Help** (Keyboard Shortcuts, About). Selecting "Main Menu" from the fractal explorer saves the current exploration state before transitioning. All top-anchored HUD elements are dynamically offset below the menu bar using the captured panel height.
+
 ### HUD Layout
-The HUD is distributed across several screen areas for minimal visual intrusion. Pressing **H** hides everything; all overlays, toolbar, panels, and floating windows disappear together.
+The HUD is distributed across several screen areas for minimal visual intrusion. Pressing **H** hides everything except the menu bar; all other overlays, toolbar, panels, and floating windows disappear together.
 
 | Area | Content |
 |---|---|
@@ -325,11 +361,17 @@ Preferences are stored as a JSON file in the OS config directory, using the `dir
 
 ## 11. Export System
 
-### Image Export (Planned)
-- High-resolution PNG export
-- Offscreen render at arbitrary resolution
-- Independent of viewport resolution
-- Optional supersampling for final quality
+### Image Export
+High-quality PNG export at any resolution, independent of the viewer's window size.
+
+- **Export dialog** — opens via `E` key or **File → Export Image**. Provides controls for image name, resolution (presets from HD to 8K, or custom), max iterations, anti-aliasing (Off / 2×2 / 4×4), and full color settings (palette, palette mode, start-from, smooth coloring).
+- **Color settings** — initialized from the viewer's current `DisplayColorSettings` but fully editable in the dialog. Changes in the export dialog do not affect the viewer.
+- **Viewport preservation** — the export dynamically recalculates the scale so that the exported image covers the same complex-plane region as the viewer, regardless of export resolution.
+- **Color fidelity** — cycle length is computed from the base `max_iterations` (matching the viewer's coloring), ensuring identical palette mapping even when adaptive iterations is enabled.
+- **Output** — PNGs are saved to `<exe_dir>/images/{fractal_name}/` (e.g. `images/mandelbrot/`, `images/julia/`). Filename collisions are resolved with numeric suffixes (`_001`, `_002`, …).
+- **Metadata** — fractal parameters (center, zoom, iterations, escape radius, Julia C, palette, AA level, resolution) are embedded as PNG tEXt chunks, readable by exiftool, IrfanView, XnView, etc.
+- **Background rendering** — the export runs on a dedicated thread with a progress bar and cancel button in the dialog. A success/error notification is shown on completion.
+- **Default filename** — auto-generated as `{Fractal}_{MaxIter}_{WxH}` if the name field is left empty.
 
 ### Animation Export (Planned)
 - Camera interpolation between bookmarks (logarithmic scale interpolation for perceptually smooth zoom)
@@ -349,7 +391,7 @@ Animations are deterministic and reproducible.
 | UI | `egui` / `eframe`, `egui_material_icons` (Material Symbols icon font) |
 | Parallelism | `rayon` |
 | Benchmarking | `criterion` |
-| Image encoding | `image` (PNG feature) |
+| Image encoding | `image` (PNG feature), `png` (direct encoder for export metadata) |
 | Base64 encoding | `base64` (for embedding thumbnails in bookmark files) |
 | Serialization | `serde`, `serde_json` |
 | Config paths | `directories` |
@@ -384,7 +426,7 @@ The release profile uses **full LTO** (`lto = "fat"`) and a single codegen unit 
 
 ### Planned features (see [Features_to_add.md](Features_to_add.md) for full behaviour)
 
-The following features are specified in [**Features_to_add.md**](Features_to_add.md). **Minimap** (§1), **Julia C Explorer** (§2), and **J preview panel** (§3) are implemented.
+The following features are specified in [**Features_to_add.md**](Features_to_add.md). **Main menu** (§1), **Minimap** (§1 — old numbering), **Julia C Explorer** (§2), and **J preview panel** (§3) are implemented.
 
 | Feature | Summary |
 |--------|--------|

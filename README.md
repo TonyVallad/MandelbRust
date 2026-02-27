@@ -14,35 +14,82 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 
 ## Status
 
-**Active development** — Phases 0–10 and 10.5 complete. The core explorer is fully functional with real-time rendering, multiple color palettes, adaptive anti-aliasing, a persistent bookmark system, J preview panel (Phase 10.5), and an optimized release profile (LTO, parallel colorization, cached hot-loop values).
+**Active development** — the core explorer is fully functional with real-time rendering, deep zoom (double-double precision up to ~10^28x), multiple color palettes, adaptive anti-aliasing, a persistent bookmark system, a main menu at launch, high-resolution image export with metadata, and an optimized release profile. See the [roadmap](docs/roadmap/roadmap.md) for what's coming next.
 
-## Current Features
+---
 
-- **Real-time exploration** — smooth pan and zoom with mouse, keyboard, and Google Maps-style controls
-- **Mandelbrot & Julia sets** — switch modes via the fractal parameters panel. **Click "Julia"** in the bottom-left to open the **Julia C Explorer** (grid of previews); pick a cell to set c and switch to Julia mode. In Julia mode, edit **Re(c)** and **Im(c)** in the bottom-left (DragValue, ±2, 10 decimals) or Shift+Click on the main view to pick c. **J** toggles a **preview panel** above the minimap: in Mandelbrot mode, live Julia preview at cursor (left-click to load Julia at that c); in Julia mode, Mandelbrot preview with crosshair at c. Preview uses same size/opacity as minimap, 4×4 AA; Julia preview iterations configurable (250 default)
-- **Multithreaded tiled renderer** — parallel CPU rendering via Rayon with automatic load balancing
-- **Progressive rendering** — instant low-resolution preview on a background thread, asynchronous refinement to full quality
-- **Computation optimizations** — cardioid/bulb checks, periodicity detection (Brent's), real-axis symmetry, border tracing
-- **5 color palettes** — Classic, Fire, Ocean, Neon, Grayscale with smooth coloring and a popup palette picker for instant switching
-- **Adaptive anti-aliasing** — boundary-aware supersampling (2×2 / 4×4) that targets only edge pixels
-- **Pan optimization** — preserves rendered quality during drag; only newly exposed edges are re-rendered
-- **Bookmark system** — self-contained, one-file-per-bookmark JSON storage with embedded base64 PNG thumbnails for easy sharing
-- **Bookmark explorer** — search, sort (A-Z / date), fractal tabs, independent favorites toggle, hierarchical label filtering (whitelist / blacklist), scrollable thumbnail grid
-- **Update or save new** — pressing S (or the toolbar icon) after opening a bookmark offers to update it in-place or save a new one
-- **Configurable bookmarks directory** — set from Settings with a native folder picker; default is a `bookmarks/` folder next to the executable
-- **Application preferences** — persistent settings (stored next to the exe); window size, defaults, restore-last-view, and bookmarks folder
-- **Legacy import** — old MSZP save files can be imported as bookmarks
-- **Adaptive iterations** — max iterations scale automatically with zoom depth
-- **Material Symbols icon toolbar** — top-right icon bar with state-aware dimming (navigation, palette, AA, smooth coloring, bookmarks, help, settings)
-- **Four-corner HUD** — viewport info (top-left), icon toolbar and cursor coords (top-right), fractal parameters (bottom-left), render stats (bottom-right); toggle all with H
-- **Controls & shortcuts window** — lists all keyboard, mouse, and toolbar actions in a clean reference panel
-- **Selection-box zoom** — right-click drag to zoom into a drawn rectangle
-- **Crosshair & center marker** — toggle for precise navigation
-- **Minimap** — overview of the current fractal (Julia set in Julia mode, default Mandelbrot view in Mandelbrot mode) with cyan viewport rectangle; crosshairs only outside the rect; 1px white border (75% opacity), no black margin; inset from corner like other HUD panels; rendered with 4×4 AA; toggle via toolbar or **M**; configurable size and opacity in Settings
-- **J preview panel** — **J** toggles a panel above the minimap (same size, shape, opacity; gap = HUD margin; 4×4 AA). In **Mandelbrot** mode: live Julia preview at cursor c (250 iterations default, configurable); left-click loads Julia at that c. In **Julia** mode: Mandelbrot preview with white crosshair at current c (uses minimap iterations); updates when c or display/color change
-- **Session persistence** — full display/color settings (palette, smooth coloring, palette mode, etc.) and last view are saved on exit and restored on startup
+## Features
 
-## Bookmark Explorer
+### Main menu
+
+On launch, MandelbRust presents a full-window main menu with four choices: **Resume Exploration** (restore your last session with a live preview and full-precision coordinates), **Mandelbrot Set** (start fresh with defaults), **Julia's Sets** (open the Julia C Explorer to pick a constant), or **Open Bookmark** (browse saved locations). The fractal explorer only loads after you make a selection.
+
+### Real-time exploration
+
+Navigate the fractal plane with Google Maps-style controls: scroll to zoom at cursor, drag to pan, arrow keys for precise movement. Every interaction triggers an instant low-resolution preview that seamlessly refines to full quality in the background. Right-click and drag to draw a selection rectangle, then release to zoom into that exact region.
+
+<p align="center">
+  <img src="docs/img/Screenshot_Zoom_using_drag.png" alt="Selection-box zoom via right-click drag" width="800">
+</p>
+
+A view history stack (up to 200 entries) supports back/forward navigation so you can retrace your steps without needing bookmarks.
+
+### Mandelbrot and Julia sets
+
+Explore the Mandelbrot set (default) or Julia sets. Click **Julia** in the bottom-left parameters panel to open the **Julia C Explorer** — a grid of small Julia set previews where you can pick a constant `c` visually. In Julia mode, fine-tune `c` with drag-value inputs or Shift+Click anywhere on the main view.
+
+Press **J** to toggle the **J preview panel** above the minimap. In Mandelbrot mode it shows a live Julia preview at your cursor — left-click to instantly load that Julia set. In Julia mode it shows a Mandelbrot overview with a crosshair marking your current `c`.
+
+### Deep zoom
+
+Standard `f64` arithmetic limits useful zoom to roughly 10^13x. MandelbRust automatically switches to **double-double precision** (two `f64` values per coordinate, ~31 significant digits) when you zoom past this threshold, extending the zoom ceiling to approximately **10^28x** with no loss of interactivity. The active precision mode is shown in the HUD ("f64" or "f64x2").
+
+All navigation operations — scroll zoom, drag pan, arrow-key pan, zoom-rect, bookmarks, undo/redo — preserve full double-double precision so you never lose your position at deep zoom.
+
+### Multithreaded tiled rendering
+
+The viewport is divided into **64x64 pixel tiles** (sized to fit in L1 cache) and rendered in parallel across all CPU cores using Rayon's work-stealing thread pool. All rendering happens on a dedicated background thread communicating with the UI via channels, so the interface never freezes.
+
+Additional optimizations reduce unnecessary work:
+- **Border tracing** — if all border pixels of a tile share the same iteration count, the interior is flood-filled without computing individual pixels
+- **Real-axis symmetry** — for the Mandelbrot set, when the viewport straddles the real axis, only the top half is computed and mirrored
+- **Cardioid and period-2 bulb checks** — closed-form tests that skip iteration entirely for ~30-40% of visible points at default zoom
+- **Periodicity detection** (Brent's algorithm) — detects orbital cycles to exit early for interior points
+- **Pan preservation** — during drag, previously rendered pixels are shifted in-place; only newly exposed edges need rendering
+
+### Adaptive iterations
+
+Max iterations automatically increase with zoom depth to reveal finer fractal detail. The formula adds iterations proportional to log2(zoom). This is toggleable; you can also set a manual ceiling via the iteration slider.
+
+### Color palettes and display settings
+
+<p align="center">
+  <img src="docs/img/Screenshot_Color_Palette.png" alt="Palette picker popup with Fire palette" width="800">
+</p>
+
+Five built-in color palettes — Classic, Fire, Ocean, Neon, Grayscale — stored as 256-entry gradient lookup tables. Switching palettes is instant: the iteration data is cached separately, so re-colorizing doesn't require re-rendering.
+
+Smooth coloring uses the continuous iteration formula `v = n + 1 - log2(ln|z_n|)` to eliminate banding between iteration levels.
+
+The display/color settings panel provides full control over:
+- **Palette mode** — by number of cycles or by cycle length (same palette, different mapping)
+- **Start-from** — fade from black or white for the first few iterations (MSZP-inspired)
+- **Smooth coloring** — toggle continuous vs banded coloring
+- **Color profiles** — save and load complete display/color configurations as shareable files
+
+### Adaptive anti-aliasing
+
+Boundary-aware supersampling that targets only edge pixels where the iteration count differs between neighbors. Interior regions are untouched. Choose between 2x2 and 4x4 sampling via the **A** key or the toolbar icon. AA data is preserved during panning so previously smoothed regions stay sharp.
+
+### Minimap
+
+<p align="center">
+  <img src="docs/img/Screenshot_Minimap.png" alt="Minimap with viewport indicator" width="400">
+</p>
+
+A zoomed-out overview rendered at the bottom-right corner. In Mandelbrot mode it shows the full Mandelbrot set; in Julia mode it shows the current Julia set. A cyan rectangle marks your viewport, with white crosshair lines extending to the edges. The minimap is rendered with 4x4 AA and is configurable in size (Small / Medium / Large), opacity, and complex-plane range. Toggle it with **M** or the toolbar icon.
+
+### Bookmark system
 
 <p align="center">
   <img src="docs/img/Screenshot_Bookmark_Explorer.png" alt="Bookmark explorer open over a Mandelbrot render" width="800">
@@ -52,91 +99,120 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
   <img src="docs/img/Screenshot_Bookmark_Explorer_Window.png" alt="Bookmark explorer window close-up" width="550">
 </p>
 
-Save, search, filter, and jump to exploration states. Each bookmark is a self-contained JSON file with an embedded thumbnail, making it easy to share locations by simply copying a file.
+Every exploration state can be saved as a bookmark capturing the complete configuration: fractal type, viewport center and zoom, iteration parameters, palette and display/color settings, anti-aliasing level, Julia constant, and a PNG thumbnail. Each bookmark is a **single self-contained JSON file** with the thumbnail embedded as base64 — just copy a file to share a location.
 
-## Color Palettes & Controls
+The **bookmark explorer** (press **B**) provides:
+- **Tabs** — All, Favorites, Mandelbrot, Julia (combinable with favorites filter)
+- **Search** — filter across names and labels
+- **Sort** — alphabetical or by date (newest first by default)
+- **Hierarchical labels** — with whitelist/blacklist filtering and a collapsible label tree
+- **Quick favorites** — star icon on each card for instant toggling
+- **Thumbnail grid** — scrollable multi-column layout with cached GPU textures
+
+Pressing **S** after navigating from a bookmark offers to **update it in-place** or **save as new**. Bookmarks are persisted immediately to disk — no "save on exit" step.
+
+The bookmarks directory is configurable from Settings with a native folder picker.
+
+### Image export
 
 <p align="center">
-  <img src="docs/img/Screenshot_Color_Palette.png" alt="Palette picker popup with Fire palette" width="800">
+  <img src="docs/img/exported_image_example.png" alt="Exported Mandelbrot fractal image" width="800">
 </p>
 
-Five built-in palettes with smooth coloring. The palette picker popup lets you preview and switch palettes instantly — no re-render needed.
+Export the current view as a high-resolution PNG at any resolution from HD to 8K and beyond. Press **E** or use **File → Export Image** to open the export dialog, which provides full control over:
 
-## Minimap
+- **Resolution** — predefined presets (720p through 8K) or custom dimensions
+- **Max iterations** and **anti-aliasing** (Off / 2×2 / 4×4)
+- **Color settings** — palette, palette mode (by cycles / by cycle length), start-from (none/black/white), smooth coloring — all pre-filled from the current viewer settings but independently editable for the export
 
-<p align="center">
-  <img src="docs/img/Screenshot_Minimap.png" alt="Minimap with viewport indicator" width="400">
-</p>
+Exported images preserve the exact visible region regardless of resolution, and embed fractal metadata (coordinates, zoom, iterations, palette, Julia C, etc.) as PNG text chunks readable by exiftool and similar tools. Files are saved to organised subdirectories (`images/mandelbrot/`, `images/julia/`) with collision-safe filenames. Exports run in the background with a progress bar and cancel button.
 
-The minimap shows a zoomed-out overview of the **current fractal**: in Julia mode it shows the Julia set for the current c; in Mandelbrot mode it shows the default Mandelbrot view. The **cyan rectangle** is your current viewport; white crosshair lines run from the minimap edges to the rectangle (not inside it). The minimap has a 1px white border (75% opacity) with no black margin, is inset from the bottom-right corner like other HUD panels, and is rendered with 4×4 anti-aliasing. Toggle it from the toolbar (map icon) or with **M**. In Settings you can choose size (Small / Medium / Large) and opacity (default 75%).
+### Menu bar
+
+A persistent menu bar at the top of the window provides quick access to all major features: **File** (main menu, bookmarks, export image, quit), **Edit** (copy coordinates, reset view), **Fractal** (switch mode, Julia C Explorer), **View** (toggle HUD/minimap/J preview/crosshair, cycle AA, settings), and **Help** (shortcuts, about). The menu bar is always visible, even when the HUD is hidden.
+
+### HUD and toolbar
+
+The heads-up display is distributed across the screen corners for minimal intrusion (all elements are positioned below the menu bar):
+
+| Area | Content |
+|------|---------|
+| **Top-left** | Viewport info: mode, center, zoom, iterations, precision, palette, warnings |
+| **Top-right** | Material Symbols icon toolbar with state-aware dimming (navigation, palette, AA, smooth coloring, bookmarks, minimap, help, settings) |
+| **Top-right** (below toolbar) | Cursor complex coordinates (when crosshair is enabled) |
+| **Bottom-left** | Fractal parameters: mode selector, Julia c inputs, iteration slider with x10/÷10 buttons, escape radius, adaptive iterations toggle |
+| **Bottom-centre** | Render stats: phase, timing, tile counts, AA status |
+| **Bottom-right** | J preview panel (when on) and minimap (when on) |
+
+Press **H** to hide everything except the menu bar. All HUD panels share a unified style with configurable background opacity (65% default).
+
+### Session persistence
+
+Your complete state — display/color settings, last view (fractal mode, viewport position, zoom, palette, AA level) — is automatically saved on exit and restored on startup.
+
+### Legacy import
+
+Old save files from [MSZP](https://github.com/TonyVallad/MSZP) (the QBasic predecessor) can be imported as bookmarks, preserving coordinates, zoom, iterations, and Julia constants.
+
+---
 
 ## Controls
 
 ### Mouse
 
 | Action | Effect |
-|---|---|
+|--------|--------|
 | Scroll wheel | Zoom at cursor |
 | Left-drag | Pan |
-| Left-click (Mandelbrot, J preview on) | Load Julia at cursor c (switch to Julia mode) |
+| Left-click (Mandelbrot mode, J preview on) | Load Julia set at cursor c |
 | Right-drag | Selection rectangle zoom |
-| Shift + Click | Set Julia constant (in Julia mode) |
-
-<p align="center">
-  <img src="docs/img/Screenshot_Zoom_using_drag.png" alt="Selection-box zoom via right-click drag" width="800">
-</p>
-
-Right-click and drag to draw a selection rectangle, then release to zoom into that region.
+| Shift + Click (Julia mode) | Set Julia constant c from cursor |
 
 ### Keyboard
 
 | Key | Action |
-|---|---|
+|-----|--------|
 | Arrow keys | Pan viewport |
-| `+` / `-` | Zoom in / out |
-| `R` | Reset view |
-| `H` | Toggle entire HUD (hides all overlays, toolbar, panels) |
+| `+` / `-` | Zoom in / out (centred) |
+| `R` | Reset view to default |
+| `H` | Toggle entire HUD |
 | `C` | Toggle crosshair |
-| `A` | Cycle AA (Off / 2×2 / 4×4) |
+| `A` | Cycle AA (Off / 2x2 / 4x4) |
 | `S` | Save / update bookmark |
 | `B` | Toggle bookmark explorer |
+| `E` | Open export dialog |
 | `M` | Toggle minimap |
-| `J` | Toggle preview panel above minimap (Julia preview in Mandelbrot / Mandelbrot preview at c in Julia) |
+| `J` | Toggle J preview panel |
 | `Backspace` | View history back |
 | `Shift+Backspace` | View history forward |
-| `Escape` | Close dialogs / help / settings, cancel render |
-
-### Toolbar Icons & Help
+| `Escape` | Close dialogs, cancel render |
 
 <p align="center">
   <img src="docs/img/Screenshot_Controls_and_Shortcuts.png" alt="Controls and shortcuts window" width="280">
 </p>
 
-Navigate back/forward, reset view, palette picker, cycle AA, smooth coloring, save bookmark, bookmark explorer, minimap, controls & shortcuts, settings — all accessible from the icon bar. Stateful icons (AA, smooth coloring, bookmarks panel) dim when off; the save-bookmark and minimap icons stay bright. Press the help icon to see the full reference shown above.
+Press the help icon in the toolbar to see the full controls reference in-app.
 
-## Planned Features
-
-- **High-resolution image export** — offscreen rendering at arbitrary resolution with optional supersampling
-- **Animation export** (post-v1.0) — bookmark-to-bookmark zoom animations with video output
-- **Deep zoom** — perturbation theory and arbitrary precision for zoom beyond 10^15
-- **Additional fractal types** — Multibrot, Burning Ship, Newton, etc.
+---
 
 ## Technology Stack
 
 | Component | Crate |
-|---|---|
+|-----------|-------|
 | Language | Rust |
 | UI | `egui` / `eframe`, `egui_material_icons` |
 | Parallelism | `rayon` |
 | Benchmarking | `criterion` |
-| Image encoding | `image` |
+| Image encoding | `image`, `png` |
 | Base64 encoding | `base64` |
 | Serialization | `serde`, `serde_json` |
 | Config paths | `directories` |
 | File dialogs | `rfd` |
 | Logging | `tracing` |
 
-No GPU required. Performance is achieved through CPU parallelism and careful architecture.
+No GPU required. Performance comes from CPU parallelism and careful architecture. The release profile uses full LTO (`lto = "fat"`) and a single codegen unit for maximum cross-crate inlining.
+
+---
 
 ## Quick Start
 
@@ -155,17 +231,39 @@ cargo bench -p mandelbrust-render
 
 ```
 MandelbRust/
-  mandelbrust-core/     # math, fractals, iteration engine
-  mandelbrust-render/   # tiled renderer, coloring, multithreading
-  mandelbrust-app/      # UI and user interaction
-  docs/                 # project documentation
+  mandelbrust-core/       # math, fractals, iteration engine
+  mandelbrust-render/     # tiled renderer, coloring, multithreading
+  mandelbrust-app/        # UI and user interaction
+    src/
+      main.rs             # entry point (~20 lines)
+      app.rs              # core struct, constructor, shared types
+      render_bridge.rs    # background render workers
+      navigation.rs       # pan, zoom, view history
+      input.rs            # mouse/keyboard event handling
+      io_worker.rs        # file I/O worker thread
+      bookmarks.rs        # bookmark data and persistence
+      preferences.rs      # user preferences
+      ui/                    # UI modules
+        main_menu.rs         # main menu screen, tile layout, preview management
+        menu_bar.rs          # persistent top menu bar
+        bookmark_browser.rs  # full-window bookmark browser
+        export.rs            # image export dialog and background worker
+        toolbar.rs           # icon toolbar
+        hud.rs               # viewport info, render stats
+        minimap.rs           # minimap panel
+        settings.rs          # settings panel
+        help.rs              # shortcuts window
+        bookmarks.rs         # bookmark explorer overlay
+        julia_explorer.rs    # Julia C Explorer grid
+  docs/                   # project documentation
 ```
 
 ## Documentation
 
 - [**Project Overview**](docs/overview.md) — architecture, design decisions, and full technical specification
-- [**Development Roadmap**](docs/roadmap-v2.md) — phased development plan with progress tracking (Phase 7+)
-- [**Original Roadmap**](docs/roadmap.md) — Phases 0–6 (all complete)
+- [**Roadmap**](docs/roadmap/roadmap.md) — phased development plan
+- [**Completed Phases**](docs/roadmap/roadmap-completed.md) — record of all completed work
+- [**Deep Zoom Analysis**](docs/deep-zoom-analysis.md) — precision options and techniques for extreme zoom depths
 - [**Optimization Report**](docs/optimization-report.md) — technical analysis of performance opportunities
 
 ## License

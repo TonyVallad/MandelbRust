@@ -1,10 +1,12 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::mpsc;
 
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
 
 use crate::display_color::DisplayColorSettings;
+use crate::io_worker::IoRequest;
 
 // ---------------------------------------------------------------------------
 // Last-view snapshot
@@ -16,6 +18,12 @@ pub struct LastView {
     pub mode: String,
     pub center_re: f64,
     pub center_im: f64,
+    /// Low-order bits for double-double center precision (~31 digits total).
+    #[serde(default)]
+    pub center_re_lo: f64,
+    /// Low-order bits for double-double center precision (~31 digits total).
+    #[serde(default)]
+    pub center_im_lo: f64,
     pub scale: f64,
     pub max_iterations: u32,
     pub escape_radius: f64,
@@ -32,6 +40,10 @@ pub struct LastView {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppPreferences {
+    /// IO worker sender for async file writes. Skipped during (de)serialization.
+    #[serde(skip)]
+    io_tx: Option<mpsc::Sender<IoRequest>>,
+
     #[serde(default = "default_window_width")]
     pub window_width: f32,
     #[serde(default = "default_window_height")]
@@ -152,6 +164,7 @@ fn default_julia_preview_iterations() -> u32 {
 impl Default for AppPreferences {
     fn default() -> Self {
         Self {
+            io_tx: None,
             window_width: default_window_width(),
             window_height: default_window_height(),
             default_max_iterations: default_max_iterations(),
@@ -177,6 +190,11 @@ impl Default for AppPreferences {
 }
 
 impl AppPreferences {
+    /// Inject the IO worker sender so that subsequent saves are off-thread.
+    pub fn set_io_sender(&mut self, tx: mpsc::Sender<IoRequest>) {
+        self.io_tx = Some(tx);
+    }
+
     /// Load preferences from the OS config directory, falling back to defaults.
     pub fn load() -> Self {
         let path = config_path();
@@ -207,20 +225,31 @@ impl AppPreferences {
     }
 
     /// Persist preferences to disk.
+    ///
+    /// When an IO sender is available the write is dispatched to the
+    /// worker thread; otherwise it runs synchronously.
     pub fn save(&self) {
         let path = config_path();
-        if let Some(parent) = path.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
-                error!("Failed to create config directory: {e}");
-                return;
-            }
-        }
         match serde_json::to_string_pretty(self) {
             Ok(json) => {
-                if let Err(e) = fs::write(&path, &json) {
-                    error!("Failed to write preferences: {e}");
+                if let Some(ref tx) = self.io_tx {
+                    let _ = tx.send(IoRequest::WriteFile {
+                        path,
+                        content: json,
+                    });
+                    debug!("Dispatched preferences save to IO worker");
                 } else {
-                    debug!("Saved preferences");
+                    if let Some(parent) = path.parent() {
+                        if let Err(e) = fs::create_dir_all(parent) {
+                            error!("Failed to create config directory: {e}");
+                            return;
+                        }
+                    }
+                    if let Err(e) = fs::write(&path, &json) {
+                        error!("Failed to write preferences: {e}");
+                    } else {
+                        debug!("Saved preferences");
+                    }
                 }
             }
             Err(e) => error!("Failed to serialize preferences: {e}"),

@@ -1,12 +1,14 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::mpsc;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
 use crate::display_color::DisplayColorSettings;
+use crate::io_worker::IoRequest;
 
 // ---------------------------------------------------------------------------
 // Bookmark
@@ -23,6 +25,12 @@ pub struct Bookmark {
     pub mode: String,
     pub center_re: f64,
     pub center_im: f64,
+    /// Low-order bits for double-double center precision (~31 digits total).
+    #[serde(default)]
+    pub center_re_lo: f64,
+    /// Low-order bits for double-double center precision (~31 digits total).
+    #[serde(default)]
+    pub center_im_lo: f64,
     pub scale: f64,
     pub max_iterations: u32,
     pub escape_radius: f64,
@@ -184,6 +192,10 @@ pub struct BookmarkStore {
     /// Parallel vector: the on-disk filename for each bookmark (without path).
     filenames: Vec<String>,
     dir: PathBuf,
+    /// When set, file writes/deletes are dispatched to the IO worker thread.
+    io_tx: Option<mpsc::Sender<IoRequest>>,
+    /// True while an async directory scan is in-flight.
+    loading: bool,
 }
 
 impl BookmarkStore {
@@ -210,9 +222,35 @@ impl BookmarkStore {
             bookmarks: Vec::new(),
             filenames: Vec::new(),
             dir,
+            io_tx: None,
+            loading: false,
         };
         store.reload();
         store
+    }
+
+    /// Inject the IO worker sender so that subsequent file operations are
+    /// dispatched off the UI thread. Called once after construction.
+    pub fn set_io_sender(&mut self, tx: mpsc::Sender<IoRequest>) {
+        self.io_tx = Some(tx);
+    }
+
+    /// Whether an async directory scan is currently in-flight.
+    #[allow(dead_code)]
+    pub fn is_loading(&self) -> bool {
+        self.loading
+    }
+
+    /// Apply the result of an async directory scan.
+    pub fn apply_scan_result(&mut self, bookmarks: Vec<Bookmark>, filenames: Vec<String>) {
+        self.bookmarks = bookmarks;
+        self.filenames = filenames;
+        self.loading = false;
+        info!(
+            "Loaded {} bookmarks from {} (async)",
+            self.bookmarks.len(),
+            self.dir.display()
+        );
     }
 
     /// Change the bookmarks directory and reload.
@@ -231,7 +269,24 @@ impl BookmarkStore {
     }
 
     /// Re-scan the bookmarks directory and reload all `.json` files.
+    ///
+    /// When an IO sender is available the scan runs on the worker thread
+    /// and results are applied later via [`apply_scan_result`]. Otherwise
+    /// the scan runs synchronously (used at startup before the worker
+    /// is connected).
     pub fn reload(&mut self) {
+        if let Some(ref tx) = self.io_tx {
+            self.loading = true;
+            let _ = tx.send(IoRequest::ScanBookmarkDir {
+                dir: self.dir.clone(),
+            });
+            return;
+        }
+        self.reload_sync();
+    }
+
+    /// Synchronous reload — used at startup before the IO worker is ready.
+    fn reload_sync(&mut self) {
         self.bookmarks.clear();
         self.filenames.clear();
 
@@ -280,6 +335,11 @@ impl BookmarkStore {
         &self.bookmarks
     }
 
+    /// Filename (without path) for the bookmark at `index`; used as a stable ID.
+    pub fn bookmark_id(&self, index: usize) -> &str {
+        &self.filenames[index]
+    }
+
     /// Path to the bookmarks directory (for display / sharing).
     pub fn directory(&self) -> &std::path::Path {
         &self.dir
@@ -288,7 +348,7 @@ impl BookmarkStore {
     pub fn add(&mut self, bookmark: Bookmark) {
         info!("Adding bookmark: {}", bookmark.name);
         let filename = self.unique_filename(&bookmark.name);
-        write_bookmark_file(&self.dir, &filename, &bookmark);
+        self.dispatch_write(&filename, &bookmark);
         self.filenames.push(filename);
         self.bookmarks.push(bookmark);
     }
@@ -298,7 +358,7 @@ impl BookmarkStore {
             return;
         }
         info!("Removing bookmark: {}", self.bookmarks[index].name);
-        delete_bookmark_file(&self.dir, &self.filenames[index]);
+        self.dispatch_delete(&self.filenames[index].clone());
         self.bookmarks.remove(index);
         self.filenames.remove(index);
     }
@@ -313,11 +373,10 @@ impl BookmarkStore {
         );
         self.bookmarks[index].name = new_name.clone();
 
-        // Re-derive filename so it matches the new name.
         let old_filename = self.filenames[index].clone();
         let new_filename = self.unique_filename(&new_name);
-        delete_bookmark_file(&self.dir, &old_filename);
-        write_bookmark_file(&self.dir, &new_filename, &self.bookmarks[index]);
+        self.dispatch_delete(&old_filename);
+        self.dispatch_write(&new_filename, &self.bookmarks[index].clone());
         self.filenames[index] = new_filename;
     }
 
@@ -396,7 +455,44 @@ impl BookmarkStore {
     /// Persist a single bookmark at `index` to its file.
     fn persist(&self, index: usize) {
         if index < self.bookmarks.len() {
-            write_bookmark_file(&self.dir, &self.filenames[index], &self.bookmarks[index]);
+            self.dispatch_write(&self.filenames[index], &self.bookmarks[index]);
+        }
+    }
+
+    /// Serialize a bookmark and send the write to the IO worker (or write
+    /// synchronously if no IO sender is available).
+    fn dispatch_write(&self, filename: &str, bookmark: &Bookmark) {
+        let json = match serde_json::to_string_pretty(bookmark) {
+            Ok(j) => j,
+            Err(e) => {
+                error!("Failed to serialize bookmark: {e}");
+                return;
+            }
+        };
+        let path = self.dir.join(filename);
+        if let Some(ref tx) = self.io_tx {
+            let _ = tx.send(IoRequest::WriteFile {
+                path,
+                content: json,
+            });
+        } else {
+            if let Err(e) = fs::write(&path, &json) {
+                error!("Failed to write bookmark file {}: {e}", path.display());
+            } else {
+                debug!("Wrote bookmark file: {}", path.display());
+            }
+        }
+    }
+
+    /// Delete a bookmark file via the IO worker (or synchronously).
+    fn dispatch_delete(&self, filename: &str) {
+        let path = self.dir.join(filename);
+        if let Some(ref tx) = self.io_tx {
+            let _ = tx.send(IoRequest::DeleteFile { path });
+        } else {
+            if let Err(e) = fs::remove_file(&path) {
+                debug!("Failed to delete bookmark file {}: {e}", path.display());
+            }
         }
     }
 
@@ -513,13 +609,6 @@ fn write_bookmark_file(dir: &std::path::Path, filename: &str, bookmark: &Bookmar
             }
         }
         Err(e) => error!("Failed to serialize bookmark: {e}"),
-    }
-}
-
-fn delete_bookmark_file(dir: &std::path::Path, filename: &str) {
-    let path = dir.join(filename);
-    if let Err(e) = fs::remove_file(&path) {
-        debug!("Failed to delete bookmark file {}: {e}", path.display());
     }
 }
 

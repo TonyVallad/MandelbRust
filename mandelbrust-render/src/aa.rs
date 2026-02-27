@@ -197,7 +197,11 @@ pub fn compute_aa<F: Fractal + Sync>(
                 for sx in 0..aa_level {
                     let px = x as f64 + (sx as f64 + 0.5) * inv;
                     let py = y as f64 + (sy as f64 + 0.5) * inv;
-                    let c = viewport.subpixel_to_complex(px, py);
+                    let c = if fractal.uses_delta_coordinates() {
+                        viewport.subpixel_to_delta(px, py)
+                    } else {
+                        viewport.subpixel_to_complex(px, py)
+                    };
                     sub.push(fractal.iterate(c));
                 }
             }

@@ -123,10 +123,23 @@ impl Default for FractalParams {
 /// inline and optimize the hot iteration loop.
 pub trait Fractal {
     /// Iterate a single point and return the result.
+    ///
+    /// For standard-precision fractals, `point` is the absolute coordinate
+    /// on the complex plane (from [`Viewport::pixel_to_complex`]).
+    ///
+    /// For extended-precision fractals (see [`uses_delta_coordinates`](Self::uses_delta_coordinates)),
+    /// `point` is the **delta from the stored center** (from [`Viewport::pixel_to_delta`]).
     fn iterate(&self, point: Complex) -> IterationResult;
 
     /// Access the iteration parameters.
     fn params(&self) -> &FractalParams;
+
+    /// If `true`, [`iterate`](Self::iterate) expects a delta from the fractal's
+    /// internally stored center, not an absolute coordinate. The renderer should
+    /// call [`Viewport::pixel_to_delta`] instead of [`Viewport::pixel_to_complex`].
+    fn uses_delta_coordinates(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(test)]

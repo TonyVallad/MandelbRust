@@ -10,3 +10,13 @@ pub fn exe_directory() -> PathBuf {
         .and_then(|p| p.parent().map(PathBuf::from))
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
+
+/// Directory for storing exported/generated images.
+pub fn images_directory() -> PathBuf {
+    exe_directory().join("images")
+}
+
+/// Directory for storing tile preview thumbnails.
+pub fn previews_directory() -> PathBuf {
+    images_directory().join("previews")
+}
