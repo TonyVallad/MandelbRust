@@ -1,6 +1,6 @@
 # MandelbRust — Roadmap
 
-**Next development focus: Phase 14 — Main Menu at Launch.**
+**Next development focus: Phase 15 — Image Export.**
 
 Each phase is a self-contained unit of work that produces a testable, working state.
 
@@ -26,12 +26,11 @@ Each phase is a self-contained unit of work that produces a testable, working st
 
 | Phase | Description |
 |-------|-------------|
-| 14 | Main Menu at Launch |
-| 15 | HUD Modifications |
-| 16 | Minimap Size Controls |
-| 17 | Deep Zoom: Perturbation Theory |
-| 18 | Deep Zoom: Series Approximation |
-| 19 | Image Export |
+| 15 | Image Export |
+| 16 | HUD Modifications |
+| 17 | Minimap Size Controls |
+| 18 | Deep Zoom: Perturbation Theory |
+| 19 | Deep Zoom: Series Approximation |
 | 20 | Memory Layout & Buffer Management |
 | 21 | Advanced Coloring |
 | 22 | SIMD Vectorization |
@@ -39,78 +38,152 @@ Each phase is a self-contained unit of work that produces a testable, working st
 | 24 | GPU Compute Backend |
 | 25 | Polish & v1.0 Release |
 
-Feature specifications for Phases 14–16: [Features_to_add.md](../Features_to_add.md).
+Feature specifications for Phases 16–17: [Features_to_add.md](../Features_to_add.md).
 
 Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis.md).
 
 ---
 
-## Phase 14 — Main Menu at Launch
+## Phase 15 — Image Export
 
-**Objective:** Show a full-window main menu when the app starts, letting the user choose how to begin: resume, Mandelbrot, Julia, or open a bookmark. The fractal explorer is not loaded until a choice is made.
+**Objective:** Support high-quality still image exports independent of screen resolution, using the current display/color settings. Exported PNGs are saved to organised per-fractal subdirectories with fractal metadata embedded in the file.
 
-**Reference:** [Features_to_add.md](../Features_to_add.md) §1.
+### Task 15.1 — Offscreen renderer
 
-### Task 14.1 — Main menu screen
+**File:** new function in `mandelbrust-render/src/renderer.rs`
 
-**Files:** new file `mandelbrust-app/src/ui/main_menu.rs`, update `app.rs`
+Create a function `render_offscreen()` that:
+1. Accepts `viewport: Viewport`, `fractal: &F`, `cancel: &RenderCancel`, `aa_level: u32`, `display_color: &DisplayColorSettings`, `palette: &Palette`.
+2. Builds a new `Viewport` at the requested export resolution (width × height) while preserving the same complex-plane center and scale as the viewer.
+3. Renders the full iteration buffer at that resolution.
+4. Runs AA if `aa_level > 0`.
+5. Colorizes the result using the full `DisplayColorSettings` (palette, cycles/cycle length, start-from black/white, smooth coloring).
+6. Returns `Result<Vec<u8>>` (RGBA pixel buffer) or an error if cancelled.
 
-1. When `AppScreen::MainMenu` is active, draw a full-window layout with four tiles arranged horizontally:
-   - **Resume Exploration**: displays last-view parameters (fractal, center, zoom, iterations, C for Julia). Separated from the other tiles by a vertical line.
-   - **Mandelbrot Set**: short description and formula placeholder.
-   - **Julia's Sets**: short description and formula placeholder.
-   - **Open Bookmark**: opens full-window bookmark browser.
-2. Tiles have **very small rounded corners**; background is **plain black**.
-3. Each tile has a **preview image area** (placeholder for now), a **title in cyan**, and **details text**.
-4. Clicking a tile triggers the corresponding action and transitions `AppScreen` to the appropriate screen.
+This function must be usable without any UI dependencies — it lives in the `mandelbrust-render` crate.
 
-**Verify:** App launches to the main menu. Each tile navigates correctly. Menu bar is visible above the main menu.
-
----
-
-### Task 14.2 — Full-window bookmark browser
-
-**Files:** new file `mandelbrust-app/src/ui/bookmark_browser.rs` (or extend `ui/bookmarks.rs`), update `app.rs`
-
-1. When `AppScreen::BookmarkBrowser` is active, draw a full-window bookmark explorer (not an overlay on the fractal view).
-2. Double-click on a bookmark or select + click "Open" → load the bookmark and transition to `AppScreen::FractalExplorer`.
-3. A "Back" button or Escape returns to the main menu.
-4. Reuse existing bookmark grid/list drawing logic where possible.
-
-**Verify:** Bookmark browser fills the window. Selecting a bookmark opens the fractal explorer at that bookmark.
+**Verify:** Unit test that renders a 256×256 image and checks the output buffer length is `256 × 256 × 4`.
 
 ---
 
-### Task 14.3 — Julia C Explorer as a full screen
+### Task 15.2 — PNG export with metadata
 
-**Files:** update `mandelbrust-app/src/ui/julia_explorer.rs`, `app.rs`
+**File:** new `mandelbrust-render/src/export.rs` module (or extend `lib.rs`)
 
-1. When launched from the main menu's "Julia's Sets" tile, the Julia C Explorer opens as a full-window screen (`AppScreen::JuliaCExplorer`).
-2. The user picks a C from the grid (double-click or select + "Open"). This sets C and transitions to `AppScreen::FractalExplorer` in Julia mode.
-3. A "Back" button or Escape returns to the main menu.
+Create a function `export_png()` that:
+1. Accepts `pixels: &[u8]`, `width: u32`, `height: u32`, `path: &Path`, `metadata: &ExportMetadata`.
+2. Writes the RGBA buffer as a PNG file.
+3. Embeds fractal metadata as **PNG tEXt chunks** (key-value text pairs). Use the lower-level `png` crate encoder (already an indirect dependency via `image`) to write custom text chunks.
+4. Returns `Result<()>`.
 
-**Verify:** Julia C Explorer fills the window when launched from the main menu. Selecting a C opens the fractal explorer in Julia mode.
+**`ExportMetadata`** struct contains:
+- Fractal type (Mandelbrot / Julia)
+- Center coordinates (full double-double precision string)
+- Zoom level
+- Max iterations
+- Escape radius
+- Julia C coordinates (if applicable)
+- AA level
+- Palette name and display/color settings summary
+- Export resolution
+- Application name and version
+
+Standard PNG tEXt keys to use: `Software` ("MandelbRust"), `Description` (human-readable summary), plus custom keys prefixed for clarity (e.g. `MandelbRust.FractalType`, `MandelbRust.CenterRe`, `MandelbRust.CenterIm`, `MandelbRust.Zoom`, `MandelbRust.MaxIterations`, `MandelbRust.JuliaC_Re`, `MandelbRust.JuliaC_Im`, `MandelbRust.Palette`, `MandelbRust.AALevel`). Tools like `exiftool`, IrfanView, and XnView can read these.
+
+**Verify:** Unit test that writes a small test image to a temp file, reads it back, and verifies the metadata keys are present.
 
 ---
 
-### Deliverables — Phase 14
+### Task 15.3 — Export dialog UI
 
-- [ ] Main menu displayed on launch with four tiles
-- [ ] "Resume Exploration" separated by a vertical line
-- [ ] Full-window bookmark browser accessible from main menu
-- [ ] Full-window Julia C Explorer accessible from main menu
-- [ ] Menu bar visible on all screens
-- [ ] Fractal explorer only loads after a choice is made
+**File:** new file `mandelbrust-app/src/ui/export.rs`
+
+An `egui::Window` dialog that opens when the user triggers an image export (keyboard shortcut `E`, menu bar File → Export Image, or toolbar icon).
+
+**Dialog fields:**
+
+1. **Image name** — text input for the filename (without `.png` extension). If left empty, an auto-generated default is used: `{FractalName}_{MaxIterations}_{Width}x{Height}` (e.g. `Mandelbrot_1000_3840x2160`).
+2. **Resolution** — a dropdown with common predefined resolutions:
+   - 1280×720 (HD)
+   - 1920×1080 (Full HD)
+   - 2560×1440 (QHD)
+   - 3840×2160 (4K UHD)
+   - 5120×2880 (5K)
+   - 7680×4320 (8K UHD)
+   - **Custom** — when selected, shows editable width and height fields
+   - **Default selection:** detect the current monitor resolution via `eframe`/`egui` and select the closest predefined entry, falling back to 1920×1080 if detection fails.
+3. **Max iterations** — numeric input, defaulting to the current `max_iterations` from the viewer.
+4. **Anti-aliasing** — dropdown: Off, 2×2, 4×4.
+5. **Color settings** — not editable in this dialog; a read-only note states "Using current display/color settings" (palette name, mode, smooth coloring status shown as informational text).
+
+**Buttons:**
+- **Export** — validates inputs, builds the export request, and closes the dialog.
+- **Cancel** — closes without exporting.
+
+**Verify:** Dialog opens via `E` key and menu bar. Fields are pre-populated with sensible defaults. Export button is disabled while fields are invalid (e.g. zero resolution).
 
 ---
 
-## Phase 15 — HUD Modifications
+### Task 15.4 — Export output path and execution
+
+**Files:** `mandelbrust-app/src/ui/export.rs`, `mandelbrust-app/src/app_dir.rs`, `mandelbrust-app/src/render_bridge.rs`
+
+1. **Output directory:** exported images go to `<exe_dir>/images/{fractal_name}/` where `{fractal_name}` is the lowercase fractal type (e.g. `images/mandelbrot/`, `images/julia/`). The directory is created automatically if it doesn't exist. This structure is extensible for future fractal types.
+2. **Filename collision:** if the target file already exists, append a numeric suffix (`_001`, `_002`, …) to avoid overwriting.
+3. **Non-blocking render:** on "Export", send an `ExportRequest` to the render thread (or a dedicated export thread) via `mpsc`. The export runs in the background using `render_offscreen()`, then writes the PNG via `export_png()`.
+4. **Progress:** show a progress indicator in the UI (e.g. bottom-centre or a small overlay) with a cancel button. Use the same atomic progress tracking as the main render pipeline.
+5. **Completion:** on success, log the file path at INFO level and briefly show a success notification in the UI. On failure, show an error notification.
+
+**Verify:** Exported PNG appears in the correct directory. Filename defaults are correct. Duplicate filenames get numeric suffixes. Export can be cancelled mid-render.
+
+---
+
+### Task 15.5 — Wire up keyboard shortcut and menu bar
+
+**Files:** `mandelbrust-app/src/input.rs`, `mandelbrust-app/src/ui/menu_bar.rs`
+
+1. **`E` key** opens the export dialog (suppressed when a text field is focused).
+2. **File → Export Image** menu item opens the same dialog (remove the current "disabled placeholder" state).
+3. The export dialog is only available from the `FractalExplorer` screen (greyed out / hidden on other screens).
+
+**Verify:** `E` key and menu item both open the export dialog. Not available from the main menu or bookmark browser.
+
+---
+
+### Task 15.6 — Update documentation
+
+**Files:** `docs/overview.md`, `README.md`
+
+1. Update the "Export System" section in `overview.md`: remove "(Planned)" from "Image Export", describe the offscreen renderer, export dialog, output paths, metadata embedding, and supported options.
+2. Add image export to the features section in `README.md`.
+3. Add the `E` key to the keyboard shortcuts table in both files.
+
+**Verify:** Documentation matches implemented behaviour.
+
+---
+
+### Deliverables — Phase 15
+
+- [ ] `render_offscreen()` function in the render crate (no UI dependency)
+- [ ] `export_png()` with PNG tEXt metadata embedding
+- [ ] Export dialog with image name, resolution presets/custom, max iterations, AA dropdown
+- [ ] Auto-generated default filename (`{Fractal}_{Iterations}_{WxH}`)
+- [ ] Output to `images/{fractal_name}/` with collision-safe filenames
+- [ ] Current display/color settings used for colorization
+- [ ] Non-blocking export with progress and cancellation
+- [ ] `E` keyboard shortcut and File → Export Image menu item
+- [ ] Fractal metadata embedded in PNG (coordinates, zoom, iterations, palette, etc.)
+- [ ] Documentation updated
+
+---
+
+## Phase 16 — HUD Modifications
 
 **Objective:** Rework the top-left and bottom-left HUD panels for clearer display, editable fields, and a simplified iterations/escape-radius block.
 
 **Reference:** [Features_to_add.md](../Features_to_add.md) §4.
 
-### Task 15.1 — Top-left HUD rework
+### Task 16.1 — Top-left HUD rework
 
 **Files:** `mandelbrust-app/src/ui/hud.rs`
 
@@ -124,7 +197,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 15.2 — Bottom-left HUD rework
+### Task 16.2 — Bottom-left HUD rework
 
 **Files:** `mandelbrust-app/src/ui/params.rs`
 
@@ -137,7 +210,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Deliverables — Phase 15
+### Deliverables — Phase 16
 
 - [ ] Fractal name centred in cyan, no "Mode:" prefix
 - [ ] Coordinates on separate lines, editable
@@ -150,13 +223,13 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-## Phase 16 — Minimap Size Controls
+## Phase 17 — Minimap Size Controls
 
 **Objective:** Allow the user to change minimap size from the UI and keyboard, complementing the existing settings menu option.
 
 **Reference:** [Features_to_add.md](../Features_to_add.md) §2.
 
-### Task 16.1 — Add +/− buttons on the minimap
+### Task 17.1 — Add +/− buttons on the minimap
 
 **Files:** `mandelbrust-app/src/ui/minimap.rs`
 
@@ -168,7 +241,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 16.2 — Page Up / Page Down keyboard shortcuts
+### Task 17.2 — Page Up / Page Down keyboard shortcuts
 
 **Files:** `mandelbrust-app/src/input.rs`
 
@@ -180,7 +253,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Deliverables — Phase 16
+### Deliverables — Phase 17
 
 - [ ] +/− buttons on the minimap
 - [ ] Page Up / Page Down change minimap size
@@ -189,13 +262,13 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-## Phase 17 — Deep Zoom: Perturbation Theory
+## Phase 18 — Deep Zoom: Perturbation Theory
 
 **Objective:** Enable zoom depths of 10^50+ by computing a single arbitrary-precision reference orbit and iterating per-pixel `f64` deltas. This is the transformational change for deep zoom.
 
 **Reference:** [deep-zoom-analysis.md](../deep-zoom-analysis.md), Option 1.
 
-### Task 17.1 — Add arbitrary-precision dependency
+### Task 18.1 — Add arbitrary-precision dependency
 
 **Files:** `mandelbrust-core/Cargo.toml`, new file `mandelbrust-core/src/arb.rs`
 
@@ -210,7 +283,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 17.2 — Compute reference orbit
+### Task 18.2 — Compute reference orbit
 
 **File:** new file `mandelbrust-core/src/perturbation.rs`
 
@@ -226,21 +299,21 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 17.3 — Delta iteration (perturbation per-pixel)
+### Task 18.3 — Delta iteration (perturbation per-pixel)
 
 **File:** `mandelbrust-core/src/perturbation.rs`
 
 1. Implement `fn iterate_perturbed(ref_orbit: &ReferenceOrbit, delta_c: Complex, max_iter: u32, escape_radius_sq: f64) -> IterationResult`.
 2. The delta recurrence: `δ_{n+1} = 2·Z_n·δ_n + δ_n² + δc`, where `Z_n` comes from the reference orbit and `δ_n`, `δc` are `f64`.
 3. Escape check: `|Z_n + δ_n|² > escape_radius²`. Expand using `|Z_n|² + 2·Re(Z_n·conj(δ_n)) + |δ_n|²`.
-4. If the reference orbit escapes before the pixel, handle gracefully (the pixel may still be iterating; this is a "rebasing" scenario — for now, fall back to marking the pixel for a secondary reference orbit in Task 17.4).
+4. If the reference orbit escapes before the pixel, handle gracefully (the pixel may still be iterating; this is a "rebasing" scenario — for now, fall back to marking the pixel for a secondary reference orbit in Task 18.4).
 5. Return `IterationResult::Escaped { iterations, norm_sq }` or `IterationResult::Interior`.
 
 **Verify:** A small test image at zoom 10^20 rendered via perturbation matches a brute-force arbitrary-precision reference (at tiny resolution, e.g. 16×16).
 
 ---
 
-### Task 17.4 — Glitch detection and rebasing
+### Task 18.4 — Glitch detection and rebasing
 
 **File:** `mandelbrust-core/src/perturbation.rs`
 
@@ -254,7 +327,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 17.5 — Integrate perturbation into the render pipeline
+### Task 18.5 — Integrate perturbation into the render pipeline
 
 **Files:** `mandelbrust-render/src/renderer.rs`, `mandelbrust-app/src/render_bridge.rs`
 
@@ -271,7 +344,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 17.6 — Adaptive iteration scaling for deep zoom
+### Task 18.6 — Adaptive iteration scaling for deep zoom
 
 **Files:** `mandelbrust-app/src/app.rs` (or relevant input/render module)
 
@@ -283,7 +356,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Deliverables — Phase 17
+### Deliverables — Phase 18
 
 - [ ] Arbitrary-precision wrapper (`ComplexArb`) in `mandelbrust-core`
 - [ ] Reference orbit computation with cancellation support
@@ -295,13 +368,13 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-## Phase 18 — Deep Zoom: Series Approximation
+## Phase 19 — Deep Zoom: Series Approximation
 
 **Objective:** Dramatically reduce per-frame cost at extreme zoom depths (10^20+) by skipping early iterations via a polynomial approximation of the perturbation orbit.
 
 **Reference:** [deep-zoom-analysis.md](../deep-zoom-analysis.md), Option 1 (SA section).
 
-### Task 18.1 — Taylor series coefficient computation
+### Task 19.1 — Taylor series coefficient computation
 
 **File:** `mandelbrust-core/src/perturbation.rs` (extend)
 
@@ -319,7 +392,7 @@ Compute series approximation coefficients alongside the reference orbit:
 
 ---
 
-### Task 18.2 — Iteration skipping in the perturbation loop
+### Task 19.2 — Iteration skipping in the perturbation loop
 
 **File:** `mandelbrust-core/src/perturbation.rs` (extend `iterate_perturbed`)
 
@@ -331,7 +404,7 @@ Compute series approximation coefficients alongside the reference orbit:
 
 ---
 
-### Task 18.3 — Configurable SA order
+### Task 19.3 — Configurable SA order
 
 **File:** `mandelbrust-core/src/perturbation.rs`
 
@@ -343,84 +416,13 @@ Compute series approximation coefficients alongside the reference orbit:
 
 ---
 
-### Deliverables — Phase 18
+### Deliverables — Phase 19
 
 - [ ] SA coefficient computation integrated into reference orbit
 - [ ] Iteration skipping in the perturbation loop
 - [ ] Configurable SA order (2nd–4th)
 - [ ] Benchmark results showing speedup at zoom 10^30+
 - [ ] Zoom to 10^100+ is practical (renders in seconds, not minutes)
-
----
-
-## Phase 19 — Image Export
-
-**Objective:** Support high-quality still image exports independent of screen resolution, using the current display/color settings.
-
-### Task 19.1 — Offscreen renderer
-
-**File:** new function in `mandelbrust-render/src/renderer.rs`
-
-Create a function `render_offscreen()` that:
-1. Accepts `viewport: Viewport`, `fractal: &F`, `cancel: &RenderCancel`, `aa_level: u32`, `smooth: bool`, `palette: &Palette`.
-2. Renders the full iteration buffer at the given viewport dimensions (not tied to the window size).
-3. Runs AA if `aa_level > 0`.
-4. Colorizes the result using the given palette and smooth flag.
-5. Returns `Result<Vec<u8>>` (RGBA pixel buffer) or an error if cancelled.
-
-This function must be usable without any UI dependencies — it lives in the `mandelbrust-render` crate.
-
-**Verify:** Unit test that renders a 256×256 image and checks the output buffer length is `256 × 256 × 4`.
-
----
-
-### Task 19.2 — PNG export utility
-
-**File:** new function in `mandelbrust-render/src/lib.rs` or a new `export.rs` module
-
-Create a function `export_png()` that:
-1. Accepts `pixels: &[u8]`, `width: u32`, `height: u32`, `path: &Path`.
-2. Writes the RGBA buffer as a PNG file using the `image` crate (already a workspace dependency).
-3. Returns `Result<()>`.
-
-**Verify:** Unit test that writes a small test image to a temp file and reads it back.
-
----
-
-### Task 19.3 — Export UI in the app
-
-**File:** `mandelbrust-app/src/ui/` (new export dialog module or extend toolbar)
-
-1. Add a toolbar icon (Material Symbols `ICON_PHOTO_CAMERA` or similar) that opens an export dialog.
-2. The dialog offers: width and height inputs (default: current viewport size ×2), AA level selector, "Export" button, and a file save dialog (via `rfd::FileDialog::new().save_file()`).
-3. On "Export", spawn the render on the existing render thread (or a new background thread). Show a progress indicator. When complete, write the PNG to the chosen path.
-4. Non-blocking: use the same `mpsc` channel pattern as the main render pipeline.
-5. Keyboard shortcut: `E` to open the export dialog.
-
-**Verify:** User can export a PNG. The exported file opens in an image viewer. The export can be cancelled.
-
----
-
-### Task 19.4 — Update documentation
-
-**Files:** `docs/overview.md`, `README.md`
-
-1. Update the "Export System" section: remove "(Planned)" from "Image Export", describe the offscreen renderer, export dialog, and supported options.
-2. Move image export to "Current Features" in README.md.
-3. Add the `E` key to the keyboard shortcuts table.
-
-**Verify:** Documentation matches implemented behaviour.
-
----
-
-### Deliverables — Phase 19
-
-- [ ] `render_offscreen()` function in the render crate (no UI dependency)
-- [ ] `export_png()` utility function
-- [ ] Export dialog with resolution, AA, and file picker
-- [ ] Non-blocking export with progress
-- [ ] `E` keyboard shortcut
-- [ ] Documentation updated
 
 ---
 
@@ -586,7 +588,7 @@ Define `Keyframe` and `AnimationPlan` structs. Implement camera interpolation: l
 
 ### Task 23.2 — Frame-by-frame renderer
 
-Render each frame via `render_offscreen()` (Phase 19), write PNG sequence to output directory. Background thread with progress callback and cancellation.
+Render each frame via `render_offscreen()` (Phase 15), write PNG sequence to output directory. Background thread with progress callback and cancellation.
 
 **Verify:** 10 frames produce 10 correctly named PNGs with smooth viewport transitions.
 
@@ -652,7 +654,7 @@ Add "Renderer: CPU / GPU" toggle in settings. GPU writes directly to texture. Gr
 
 ### Task 24.4 — GPU perturbation (deep zoom on GPU)
 
-Upload the reference orbit (from Phase 17) as a GPU storage buffer. Each GPU thread iterates deltas for one pixel. Emulated f64 in WGSL if needed, or Vulkan `shaderFloat64` on supported hardware.
+Upload the reference orbit (from Phase 18) as a GPU storage buffer. Each GPU thread iterates deltas for one pixel. Emulated f64 in WGSL if needed, or Vulkan `shaderFloat64` on supported hardware.
 
 **Verify:** GPU perturbation at zoom 10^25 matches CPU perturbation output. Render time is significantly faster.
 

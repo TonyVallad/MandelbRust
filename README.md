@@ -14,11 +14,15 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 
 ## Status
 
-**Active development** — the core explorer is fully functional with real-time rendering, deep zoom (double-double precision up to ~10^28x), multiple color palettes, adaptive anti-aliasing, a persistent bookmark system, and an optimized release profile. See the [roadmap](docs/roadmap/roadmap.md) for what's coming next.
+**Active development** — the core explorer is fully functional with real-time rendering, deep zoom (double-double precision up to ~10^28x), multiple color palettes, adaptive anti-aliasing, a persistent bookmark system, a main menu at launch, and an optimized release profile. See the [roadmap](docs/roadmap/roadmap.md) for what's coming next.
 
 ---
 
 ## Features
+
+### Main menu
+
+On launch, MandelbRust presents a full-window main menu with four choices: **Resume Exploration** (restore your last session with a live preview and full-precision coordinates), **Mandelbrot Set** (start fresh with defaults), **Julia's Sets** (open the Julia C Explorer to pick a constant), or **Open Bookmark** (browse saved locations). The fractal explorer only loads after you make a selection.
 
 ### Real-time exploration
 
@@ -224,15 +228,17 @@ MandelbRust/
       io_worker.rs        # file I/O worker thread
       bookmarks.rs        # bookmark data and persistence
       preferences.rs      # user preferences
-      ui/                 # UI modules
-        menu_bar.rs       # persistent top menu bar
-        toolbar.rs        # icon toolbar
-        hud.rs            # viewport info, render stats
-        minimap.rs        # minimap panel
-        settings.rs       # settings panel
-        help.rs           # shortcuts window
-        bookmarks.rs      # bookmark explorer UI
-        julia_explorer.rs # Julia C Explorer grid
+      ui/                    # UI modules
+        main_menu.rs         # main menu screen, tile layout, preview management
+        menu_bar.rs          # persistent top menu bar
+        bookmark_browser.rs  # full-window bookmark browser
+        toolbar.rs           # icon toolbar
+        hud.rs               # viewport info, render stats
+        minimap.rs           # minimap panel
+        settings.rs          # settings panel
+        help.rs              # shortcuts window
+        bookmarks.rs         # bookmark explorer overlay
+        julia_explorer.rs    # Julia C Explorer grid
   docs/                   # project documentation
 ```
 

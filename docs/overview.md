@@ -75,26 +75,28 @@ Desktop application using `egui` / `eframe`. The codebase is organized into focu
 | Module | Contents |
 |---|---|
 | `main.rs` | Module declarations and `fn main()` entry point (~20 lines) |
-| `app.rs` | `MandelbRustApp` struct definition, shared enums/constants (`FractalMode`, `ActiveDialog`, `BookmarkSnap`, etc.), constructor, palette/color helpers, `eframe::App` trait implementation, IO response polling |
-| `app_state.rs` | `AppScreen` enum — top-level state machine for dispatching between application screens |
-| `render_bridge.rs` | Background render worker types (`RenderRequest`, `RenderResponse`, `RenderPhase`, `JuliaGridRequest`) and worker thread functions. Render dispatch and response polling |
+| `app.rs` | `MandelbRustApp` struct definition, shared enums/constants (`FractalMode`, `ActiveDialog`, `BookmarkSnap`, etc.), constructor, palette/color helpers, `eframe::App` trait implementation (screen dispatcher), IO response polling |
+| `app_state.rs` | `AppScreen` enum — top-level state machine for dispatching between application screens (`MainMenu`, `FractalExplorer`, `BookmarkBrowser`, `JuliaCExplorer`) |
+| `render_bridge.rs` | Background render worker types (`RenderRequest`, `RenderResponse`, `RenderPhase`, `JuliaGridRequest`) and worker thread functions. Render dispatch and response polling. Triggers resume preview capture on final renders |
 | `navigation.rs` | Pan, zoom, view history (undo/redo), viewport resize, zoom-rect handling |
-| `input.rs` | Mouse event handling (drag, click, scroll), keyboard shortcuts |
+| `input.rs` | Mouse event handling (drag, click, scroll), keyboard shortcuts, screen-aware Escape handling |
 | `io_worker.rs` | `IoRequest`/`IoResponse` enums and dedicated I/O worker thread for file writes, deletes, and bookmark directory scans |
 | `bookmarks.rs` | `Bookmark` data structure (self-contained with embedded base64 PNG thumbnail), `BookmarkStore` (one `.json` file per bookmark, async persistence via IO worker, directory scanning), `LabelNode` for hierarchical label trees, `encode_thumbnail` / `decode_thumbnail` for inline image embedding, automatic legacy migration |
 | `preferences.rs` | `AppPreferences` — persistent user settings (window size, defaults, restore-last-view, configurable bookmarks directory), async saves via IO worker. `LastView` for capturing/restoring the last exploration state |
 | `color_profiles.rs` | Color profile I/O: list, load, and save `DisplayColorSettings` as JSON files |
 | `display_color.rs` | `DisplayColorSettings` struct and related types for palette mode, start-from, smooth coloring |
-| `app_dir.rs` | Executable directory helper for locating data files |
+| `app_dir.rs` | Executable directory helper for locating data files, `images_directory()` and `previews_directory()` for preview image storage |
 | `j_preview.rs` | J preview panel render request/response logic |
-| `ui/menu_bar.rs` | Persistent top menu bar (File, Edit, Fractal, View, Help), About dialog, coordinate copy, fractal mode switching, AA cycling |
+| `ui/menu_bar.rs` | Persistent top menu bar (File, Edit, Fractal, View, Help), About dialog, coordinate copy, fractal mode switching, AA cycling. "Main Menu" navigation with exploration state persistence |
+| `ui/main_menu.rs` | Full-window main menu with four tile options (Resume, Mandelbrot, Julia, Bookmark), preview image management (load/save PNGs, cover-mode display), rich-text rendering with bold markup, double-double precision coordinate formatting |
+| `ui/bookmark_browser.rs` | Full-window bookmark browser with tab bar, search, sort, label filter, bookmark grid, single/double-click selection, "Open Bookmark" button |
 | `ui/toolbar.rs` | Top-right Material Symbols icon toolbar with state-aware dimming |
 | `ui/hud.rs` | Top-left viewport info, bottom-centre render stats, J-preview and minimap drawing |
 | `ui/minimap.rs` | Minimap viewport calculations, revision tracking, render request/response handling |
 | `ui/settings.rs` | Settings panel (window size, bookmarks directory, minimap, Julia explorer, opacity) |
 | `ui/help.rs` | Controls & shortcuts window |
-| `ui/bookmarks.rs` | Bookmark explorer window, save/update dialogs, thumbnail caching with LRU eviction, bookmark grid, label tree |
-| `ui/julia_explorer.rs` | Julia C Explorer grid (central panel mode) |
+| `ui/bookmarks.rs` | Bookmark explorer overlay, save/update dialogs, thumbnail caching with LRU eviction, bookmark grid, label tree |
+| `ui/julia_explorer.rs` | Julia C Explorer grid (central panel and full-window modes) |
 
 ---
 
@@ -241,8 +243,18 @@ Multithreading is a **core requirement**, not an optimization.
 - **Palette popup picker** — clicking the palette icon in the toolbar opens a popup showing all palettes with color gradient preview swatches; clicking a palette selects it immediately
 - Architecture allows future palette editor / histogram coloring. **Planned:** A **Display/color settings** panel (replacing the palette icon) with full control over palette mode (cycles vs cycle length), start-from black/white, log-log/smooth toggle, and **color profiles** (one file per profile in a `color_profiles/` folder). See **§13 Planned features** and [Features_to_add.md](Features_to_add.md).
 
+### Main Menu
+On launch, the application displays a full-window main menu instead of immediately loading the fractal explorer. The menu presents four horizontally arranged tiles on a black background:
+
+1. **Resume Exploration** — restores the last exploration state (fractal mode, viewport, display/color settings). Displays live parameters (center coordinates in double-double precision, zoom, iterations, Julia C if applicable) and a preview thumbnail that is automatically updated on every final render completion.
+2. **Mandelbrot Set** — opens a fresh Mandelbrot exploration with default settings.
+3. **Julia's Sets** — opens the Julia C Explorer as a full-window screen; selecting a C transitions to the fractal explorer in Julia mode.
+4. **Open Bookmark** — opens the bookmark browser as a full-window screen; selecting a bookmark transitions to the fractal explorer at that location.
+
+A vertical separator visually distinguishes "Resume Exploration" from the other tiles. Each tile has a preview image area (cover-mode display preserving aspect ratio), a cyan title, and centered rich-text descriptions with bold markup. The fractal explorer is not loaded until a selection is made.
+
 ### Menu Bar
-A persistent menu bar sits at the very top of the window, rendered via `egui::TopBottomPanel::top` so it reserves space before the viewport. It is always visible — hiding the HUD does not hide the menu bar, and it appears in every application screen (fractal explorer, bookmark browser, Julia C Explorer, main menu). Menus: **File** (Save Bookmark, Open Bookmarks, Export Image placeholder, Quit), **Edit** (Copy Coordinates, Reset View), **Fractal** (Switch Mandelbrot/Julia, Julia C Explorer), **View** (toggle HUD/minimap/J preview/crosshair, cycle AA, settings), **Help** (Keyboard Shortcuts, About). All top-anchored HUD elements are dynamically offset below the menu bar using the captured panel height.
+A persistent menu bar sits at the very top of the window, rendered via `egui::TopBottomPanel::top` so it reserves space before the viewport. It is always visible — hiding the HUD does not hide the menu bar, and it appears in every application screen (main menu, fractal explorer, bookmark browser, Julia C Explorer). Menus: **File** (Main Menu, Save Bookmark, Open Bookmarks, Export Image placeholder, Quit), **Edit** (Copy Coordinates, Reset View), **Fractal** (Switch Mandelbrot/Julia, Julia C Explorer), **View** (toggle HUD/minimap/J preview/crosshair, cycle AA, settings), **Help** (Keyboard Shortcuts, About). Selecting "Main Menu" from the fractal explorer saves the current exploration state before transitioning. All top-anchored HUD elements are dynamically offset below the menu bar using the captured panel height.
 
 ### HUD Layout
 The HUD is distributed across several screen areas for minimal visual intrusion. Pressing **H** hides everything except the menu bar; all other overlays, toolbar, panels, and floating windows disappear together.
@@ -405,7 +417,7 @@ The release profile uses **full LTO** (`lto = "fat"`) and a single codegen unit 
 
 ### Planned features (see [Features_to_add.md](Features_to_add.md) for full behaviour)
 
-The following features are specified in [**Features_to_add.md**](Features_to_add.md). **Minimap** (§1), **Julia C Explorer** (§2), and **J preview panel** (§3) are implemented.
+The following features are specified in [**Features_to_add.md**](Features_to_add.md). **Main menu** (§1), **Minimap** (§1 — old numbering), **Julia C Explorer** (§2), and **J preview panel** (§3) are implemented.
 
 | Feature | Summary |
 |--------|--------|

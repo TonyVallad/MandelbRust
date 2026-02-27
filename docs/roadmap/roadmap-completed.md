@@ -196,3 +196,25 @@ Reference: [Features_to_add.md](../Features_to_add.md) §3.
 - [x] Menu bar height captured at render time and used to offset all top-anchored HUD elements (top-left viewport info, top-right toolbar, display/color panel, cursor coordinates)
 - [x] Menu bar stays visible when HUD is hidden; HUD elements no longer overlap the menu bar
 - [x] About MandelbRust dialog window with project name, description, and GitHub link
+
+---
+
+## Phase 14 — Main Menu at Launch
+
+**Objective:** Show a full-window main menu when the app starts, letting the user choose how to begin: resume, Mandelbrot, Julia, or open a bookmark. The fractal explorer is not loaded until a choice is made.
+
+- [x] `AppScreen` enum (`MainMenu`, `FractalExplorer`, `BookmarkBrowser`, `JuliaCExplorer`) as top-level state machine; `MainMenu` is the default on launch
+- [x] Main `update()` refactored into a screen dispatcher: menu bar always drawn first, then screen-specific logic, then global overlays (settings, help, about)
+- [x] **Main menu screen** (`ui/main_menu.rs`): four horizontal tiles (Resume Exploration, Mandelbrot Set, Julia's Sets, Open Bookmark) on a black background with a vertical separator between the first and remaining tiles
+- [x] Tiles have small rounded corners, dark backgrounds with hover effects, preview images (cover mode with aspect-ratio-preserving UV cropping), cyan titles, and centered rich-text descriptions (bold/normal via `**markup**` parsed into per-line `LayoutJob` galleys)
+- [x] Tile descriptions show formulas (`Z = Z² + C`) and explain how each fractal works
+- [x] **Resume Exploration** tile displays live state: fractal mode, double-double-precision center coordinates (30-digit `format_dd_trimmed`), Julia C coordinates (3-line format), zoom, and iterations — all with trailing zeros stripped
+- [x] **Preview images** loaded from `images/previews/` directory: `resume_preview.png`, `mandelbrot_preview.png`, `julia_preview.png`, `bookmarks_preview.png`; lazy-loaded on first menu draw
+- [x] Resume preview automatically captured on every final render completion (reuses the already-colorized pixel buffer from `apply_result`, no re-computation), saved as PNG (max 512px wide, Lanczos3 downscale), and loaded as an egui texture
+- [x] Preview images stored on disk in `<exe_dir>/images/previews/` folder structure
+- [x] Tile layout uses pixel-snapped rects (`snap_rect`) to eliminate sub-pixel gaps between preview images and tile borders
+- [x] **Full-window bookmark browser** (`ui/bookmark_browser.rs`): back button, tab bar, search, sort, label filter, bookmark grid with single-click select / double-click open, "Open Bookmark" button
+- [x] **Full-window Julia C Explorer** (`ui/julia_explorer.rs` `draw_julia_c_explorer_screen`): back button, grid of Julia previews, C selection transitions to fractal explorer in Julia mode
+- [x] Menu bar updated: "Main Menu" item in File menu (saves exploration state when leaving fractal explorer), context-aware enable/disable of Save Bookmark and Open Bookmarks
+- [x] Escape key handling is screen-aware: returns to main menu from BookmarkBrowser and JuliaCExplorer
+- [x] `app_dir.rs` extended with `images_directory()` and `previews_directory()` helpers
