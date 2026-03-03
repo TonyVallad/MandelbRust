@@ -24,6 +24,10 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 
 On launch, MandelbRust presents a full-window main menu with four choices: **Resume Exploration** (restore your last session with a live preview and full-precision coordinates), **Mandelbrot Set** (start fresh with defaults), **Julia's Sets** (open the Julia C Explorer to pick a constant), or **Open Bookmark** (browse saved locations). The fractal explorer only loads after you make a selection.
 
+<p align="center">
+  <img src="docs/img/Screenshot_Main_Menu.png" alt="MandelbRust main menu at launch" width="800">
+</p>
+
 ### Real-time exploration
 
 Navigate the fractal plane with Google Maps-style controls: scroll to zoom at cursor, drag to pan, arrow keys for precise movement. Every interaction triggers an instant low-resolution preview that seamlessly refines to full quality in the background. Right-click and drag to draw a selection rectangle, then release to zoom into that exact region.
@@ -96,7 +100,7 @@ A zoomed-out overview rendered at the bottom-right corner. In Mandelbrot mode it
 </p>
 
 <p align="center">
-  <img src="docs/img/Screenshot_Bookmark_Explorer_Window.png" alt="Bookmark explorer window close-up" width="550">
+  <img src="docs/img/Screenshot_Bookmark_Explorer_Window.png" alt="Bookmark explorer window close-up" width="800">
 </p>
 
 Every exploration state can be saved as a bookmark capturing the complete configuration: fractal type, viewport center and zoom, iteration parameters, palette and display/color settings, anti-aliasing level, Julia constant, and a PNG thumbnail. Each bookmark is a **single self-contained JSON file** with the thumbnail embedded as base64 — just copy a file to share a location.
