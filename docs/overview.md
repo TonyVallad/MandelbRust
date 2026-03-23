@@ -276,7 +276,7 @@ The HUD is distributed across several screen areas for minimal visual intrusion.
 A **progress bar** appears at the top of the viewport during rendering and AA passes.
 
 ### Controls & Shortcuts Window
-Accessed via the **help_outline** icon in the toolbar. A floating, closable window that lists all keyboard shortcuts, mouse controls, and toolbar icon descriptions (shown as actual Material Symbol glyphs) in a clean grid layout. Closes with Escape or the window's X button.
+Accessed via the **help_outline** icon in the toolbar. A floating, closable window with tabs: **Controls** (keyboard + mouse) and **Toolbar Icons** (Material Symbol glyph reference). Closes with Escape or the window's X button.
 
 ### Display Options
 - Crosshair overlay with viewport center indicator (toggle with `C`)

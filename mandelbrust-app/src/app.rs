@@ -125,6 +125,14 @@ pub(crate) enum SettingsTab {
     JuliaExplorer,
 }
 
+/// Tabs for the controls/help window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum HelpTab {
+    #[default]
+    Controls,
+    Toolbar,
+}
+
 // ---------------------------------------------------------------------------
 // Window icon
 // ---------------------------------------------------------------------------
@@ -199,6 +207,7 @@ pub(crate) struct MandelbRustApp {
     pub(crate) color_profile_selected: String,
     pub(crate) color_profile_save_name: String,
     pub(crate) show_help: bool,
+    pub(crate) help_tab: HelpTab,
     pub(crate) show_crosshair: bool,
     pub(crate) show_about: bool,
     pub(crate) menu_bar_height: f32,
@@ -425,6 +434,7 @@ impl MandelbRustApp {
             color_profile_selected: String::new(),
             color_profile_save_name: String::new(),
             show_help: false,
+            help_tab: HelpTab::default(),
             show_crosshair: false,
             show_about: false,
             menu_bar_height: 0.0,

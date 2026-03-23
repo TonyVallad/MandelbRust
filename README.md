@@ -205,7 +205,7 @@ Old save files from [MSZP](https://github.com/TonyVallad/MSZP) (the QBasic prede
   <img src="docs/img/Screenshot_Controls_and_Shortcuts.png" alt="Controls and shortcuts window" width="280">
 </p>
 
-Press the help icon in the toolbar to see the full controls reference in-app.
+Press the help icon in the toolbar to open the tabbed controls reference in-app (`Controls` and `Toolbar Icons` tabs).
 
 ---
 
