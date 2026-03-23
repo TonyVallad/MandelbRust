@@ -132,6 +132,9 @@ The bookmarks directory is configurable from Settings with a native folder picke
 <p align="center">
   <img src="docs/img/exported_image_example.png" alt="Exported Mandelbrot fractal image" width="800">
 </p>
+<p align="center">
+  <img src="docs/img/exported_image_example2.png" alt="Exported Mandelbrot fractal image" width="800">
+</p>
 
 Export the current view as a high-resolution PNG at any resolution from HD to 8K and beyond. Press **E**, use **File → Export Image**, or click the top-right export icon to open the export dialog, which provides full control over:
 
@@ -202,7 +205,11 @@ Old save files from [MSZP](https://github.com/TonyVallad/MSZP) (the QBasic prede
 | `Escape` | Close dialogs, cancel render |
 
 <p align="center">
-  <img src="docs/img/Screenshot_Controls_and_Shortcuts.png" alt="Controls and shortcuts window" width="280">
+  <img src="docs/img/Screenshot_Controls.png" alt="Controls tab in the controls and shortcuts window" width="380">
+</p>
+
+<p align="center">
+  <img src="docs/img/Screenshot_Toolbar.png" alt="Toolbar Icons tab in the controls and shortcuts window" width="380">
 </p>
 
 Press the help icon in the toolbar to open the tabbed controls reference in-app (`Controls` and `Toolbar Icons` tabs).
