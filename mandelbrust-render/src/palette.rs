@@ -3,6 +3,7 @@ use rayon::prelude::*;
 
 use crate::aa::AaSamples;
 use crate::buffer::RenderBuffer;
+use crate::extras_buffer::ExtrasBuffer;
 use crate::iteration_buffer::IterationBuffer;
 
 const LUT_SIZE: usize = 256;
@@ -19,6 +20,31 @@ pub enum StartFrom {
     White,
 }
 
+/// How escaped pixels are mapped to palette colors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ColoringMode {
+    /// Standard cycle-based palette mapping.
+    #[default]
+    Standard,
+    /// Histogram equalization: iterations are mapped through a CDF for even
+    /// color distribution. No re-render needed — only the iteration buffer.
+    Histogram,
+    /// Distance estimation: the boundary distance `d = |z|·ln|z| / |dz|`
+    /// is mapped to palette position. Requires extras buffer.
+    DistanceEstimation,
+}
+
+/// How interior (non-escaping) pixels are colored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InteriorMode {
+    /// Solid black.
+    #[default]
+    Black,
+    /// Stripe average coloring reveals orbital structure.
+    /// Requires extras buffer.
+    StripeAverage,
+}
+
 /// Parameters for mapping iterations to palette color (cycle length, smooth, start-from).
 #[derive(Debug, Clone)]
 pub struct ColorParams {
@@ -28,6 +54,8 @@ pub struct ColorParams {
     pub start_from: StartFrom,
     pub low_threshold_start: u32,
     pub low_threshold_end: u32,
+    pub coloring_mode: ColoringMode,
+    pub interior_mode: InteriorMode,
 }
 
 impl ColorParams {
@@ -39,6 +67,8 @@ impl ColorParams {
             start_from: StartFrom::None,
             low_threshold_start: 10,
             low_threshold_end: 30,
+            coloring_mode: ColoringMode::Standard,
+            interior_mode: InteriorMode::Black,
         }
     }
 }
@@ -54,14 +84,32 @@ impl ColorParams {
 /// between adjacent entries.
 #[derive(Clone)]
 pub struct Palette {
-    pub name: &'static str,
+    pub name: String,
     colors: Vec<[u8; 4]>,
 }
 
 impl Palette {
-    pub fn new(name: &'static str, colors: Vec<[u8; 4]>) -> Self {
+    pub fn new(name: impl Into<String>, colors: Vec<[u8; 4]>) -> Self {
         assert!(!colors.is_empty());
-        Self { name, colors }
+        Self {
+            name: name.into(),
+            colors,
+        }
+    }
+
+    /// Build a `Palette` from a [`PaletteDefinition`] by sampling its gradient
+    /// into a LUT of `LUT_SIZE` entries.
+    pub fn from_definition(def: &mandelbrust_core::palette_data::PaletteDefinition) -> Self {
+        let colors: Vec<[u8; 4]> = (0..LUT_SIZE)
+            .map(|i| {
+                let t = i as f64 / LUT_SIZE as f64;
+                def.sample(t)
+            })
+            .collect();
+        Self {
+            name: def.name.clone(),
+            colors,
+        }
     }
 
     /// Map a single iteration result to an RGBA color using cycle mode and optional start-from fade.
@@ -187,6 +235,273 @@ impl Palette {
         }
     }
 
+    // -- Advanced coloring modes -------------------------------------------
+
+    /// Colorize using histogram equalization: iteration counts are remapped
+    /// through a CDF so all palette colors appear with roughly equal frequency.
+    pub fn colorize_histogram(
+        &self,
+        iter_buf: &IterationBuffer,
+        extras: Option<&ExtrasBuffer>,
+        params: &ColorParams,
+    ) -> RenderBuffer {
+        let cdf = build_histogram_cdf(iter_buf);
+        let total = cdf.last().copied().unwrap_or(1) as f64;
+        let len = iter_buf.data.len();
+        let mut pixels = vec![0u8; len * 4];
+
+        pixels
+            .par_chunks_mut(4)
+            .enumerate()
+            .for_each(|(idx, pixel)| {
+                let result = iter_buf.data[idx];
+                let c = match result {
+                    IterationResult::Interior => {
+                        color_interior(self, extras, idx, params)
+                    }
+                    IterationResult::Escaped {
+                        iterations,
+                        norm_sq,
+                    } => {
+                        let base_t = cdf[iterations as usize] as f64 / total;
+                        let t = if params.smooth {
+                            let frac = smooth_iteration(iterations, norm_sq) - iterations as f64;
+                            let next_idx =
+                                (iterations as usize + 1).min(cdf.len().saturating_sub(1));
+                            let next_t = cdf[next_idx] as f64 / total;
+                            base_t + frac * (next_t - base_t)
+                        } else {
+                            base_t
+                        };
+                        self.sample(t * self.colors.len() as f64)
+                    }
+                };
+                pixel.copy_from_slice(&c);
+            });
+
+        RenderBuffer {
+            width: iter_buf.width,
+            height: iter_buf.height,
+            pixels,
+        }
+    }
+
+    /// Colorize using histogram equalization with AA.
+    pub fn colorize_histogram_aa(
+        &self,
+        iter_buf: &IterationBuffer,
+        aa: &AaSamples,
+        extras: Option<&ExtrasBuffer>,
+        params: &ColorParams,
+    ) -> RenderBuffer {
+        let cdf = build_histogram_cdf(iter_buf);
+        let total = cdf.last().copied().unwrap_or(1) as f64;
+        let w = iter_buf.width;
+        let h = iter_buf.height;
+        let len = (w * h) as usize;
+        let mut pixels = vec![0u8; len * 4];
+        let n = aa.aa_level * aa.aa_level;
+
+        pixels
+            .par_chunks_mut(4)
+            .enumerate()
+            .for_each(|(idx, pixel)| {
+                let x = (idx as u32) % w;
+                let y = (idx as u32) / w;
+                let c = if let Some(samples) = aa.samples(x, y) {
+                    let (mut r, mut g, mut b) = (0u32, 0u32, 0u32);
+                    for &s in samples {
+                        let sc = match s {
+                            IterationResult::Interior => [0, 0, 0, 255],
+                            IterationResult::Escaped {
+                                iterations,
+                                norm_sq,
+                            } => {
+                                let base_t = cdf[iterations as usize] as f64 / total;
+                                let t = if params.smooth {
+                                    let frac =
+                                        smooth_iteration(iterations, norm_sq) - iterations as f64;
+                                    let next_idx =
+                                        (iterations as usize + 1).min(cdf.len().saturating_sub(1));
+                                    let next_t = cdf[next_idx] as f64 / total;
+                                    base_t + frac * (next_t - base_t)
+                                } else {
+                                    base_t
+                                };
+                                self.sample(t * self.colors.len() as f64)
+                            }
+                        };
+                        r += sc[0] as u32;
+                        g += sc[1] as u32;
+                        b += sc[2] as u32;
+                    }
+                    [(r / n) as u8, (g / n) as u8, (b / n) as u8, 255]
+                } else {
+                    let result = iter_buf.data[idx];
+                    match result {
+                        IterationResult::Interior => {
+                            color_interior(self, extras, idx, params)
+                        }
+                        IterationResult::Escaped {
+                            iterations,
+                            norm_sq,
+                        } => {
+                            let base_t = cdf[iterations as usize] as f64 / total;
+                            let t = if params.smooth {
+                                let frac =
+                                    smooth_iteration(iterations, norm_sq) - iterations as f64;
+                                let next_idx =
+                                    (iterations as usize + 1).min(cdf.len().saturating_sub(1));
+                                let next_t = cdf[next_idx] as f64 / total;
+                                base_t + frac * (next_t - base_t)
+                            } else {
+                                base_t
+                            };
+                            self.sample(t * self.colors.len() as f64)
+                        }
+                    }
+                };
+                pixel.copy_from_slice(&c);
+            });
+
+        RenderBuffer {
+            width: w,
+            height: h,
+            pixels,
+        }
+    }
+
+    /// Colorize using distance estimation. The per-pixel distance from the
+    /// extras buffer is log-mapped to palette position.
+    pub fn colorize_distance(
+        &self,
+        iter_buf: &IterationBuffer,
+        extras: &ExtrasBuffer,
+        params: &ColorParams,
+    ) -> RenderBuffer {
+        let len = iter_buf.data.len();
+        let mut pixels = vec![0u8; len * 4];
+
+        let (d_min, d_max) = distance_range(&extras.distance, &iter_buf.data);
+
+        pixels
+            .par_chunks_mut(4)
+            .enumerate()
+            .for_each(|(idx, pixel)| {
+                let c = match iter_buf.data[idx] {
+                    IterationResult::Interior => {
+                        color_interior(self, Some(extras), idx, params)
+                    }
+                    IterationResult::Escaped { .. } => {
+                        let d = extras.distance[idx];
+                        let t = log_normalize(d, d_min, d_max);
+                        self.sample(t * self.colors.len() as f64)
+                    }
+                };
+                pixel.copy_from_slice(&c);
+            });
+
+        RenderBuffer {
+            width: iter_buf.width,
+            height: iter_buf.height,
+            pixels,
+        }
+    }
+
+    /// Unified colorize dispatch that selects the correct method based on
+    /// `params.coloring_mode` and `params.interior_mode`.
+    pub fn colorize_advanced(
+        &self,
+        iter_buf: &IterationBuffer,
+        extras: Option<&ExtrasBuffer>,
+        aa: Option<&AaSamples>,
+        params: &ColorParams,
+    ) -> RenderBuffer {
+        match params.coloring_mode {
+            ColoringMode::Histogram => {
+                if let Some(aa) = aa {
+                    self.colorize_histogram_aa(iter_buf, aa, extras, params)
+                } else {
+                    self.colorize_histogram(iter_buf, extras, params)
+                }
+            }
+            ColoringMode::DistanceEstimation => {
+                if let Some(ext) = extras {
+                    self.colorize_distance(iter_buf, ext, params)
+                } else if let Some(aa) = aa {
+                    self.colorize_aa(iter_buf, aa, params)
+                } else {
+                    self.colorize(iter_buf, params)
+                }
+            }
+            ColoringMode::Standard => {
+                if params.interior_mode != InteriorMode::Black && extras.is_some() {
+                    self.colorize_with_interior(iter_buf, extras.unwrap(), aa, params)
+                } else if let Some(aa) = aa {
+                    self.colorize_aa(iter_buf, aa, params)
+                } else {
+                    self.colorize(iter_buf, params)
+                }
+            }
+        }
+    }
+
+    /// Standard coloring with stripe-average interior.
+    fn colorize_with_interior(
+        &self,
+        iter_buf: &IterationBuffer,
+        extras: &ExtrasBuffer,
+        aa: Option<&AaSamples>,
+        params: &ColorParams,
+    ) -> RenderBuffer {
+        let w = iter_buf.width;
+        let h = iter_buf.height;
+        let len = (w * h) as usize;
+        let mut pixels = vec![0u8; len * 4];
+        let n = aa.map(|a| a.aa_level * a.aa_level).unwrap_or(1);
+
+        pixels
+            .par_chunks_mut(4)
+            .enumerate()
+            .for_each(|(idx, pixel)| {
+                let x = (idx as u32) % w;
+                let y = (idx as u32) / w;
+                let c = if let Some(aa) = aa {
+                    if let Some(samples) = aa.samples(x, y) {
+                        let (mut r, mut g, mut b) = (0u32, 0u32, 0u32);
+                        for &s in samples {
+                            let sc = self.color(s, params);
+                            r += sc[0] as u32;
+                            g += sc[1] as u32;
+                            b += sc[2] as u32;
+                        }
+                        [(r / n) as u8, (g / n) as u8, (b / n) as u8, 255]
+                    } else {
+                        match iter_buf.data[idx] {
+                            IterationResult::Interior => {
+                                color_interior(self, Some(extras), idx, params)
+                            }
+                            _ => self.color(iter_buf.data[idx], params),
+                        }
+                    }
+                } else {
+                    match iter_buf.data[idx] {
+                        IterationResult::Interior => {
+                            color_interior(self, Some(extras), idx, params)
+                        }
+                        _ => self.color(iter_buf.data[idx], params),
+                    }
+                };
+                pixel.copy_from_slice(&c);
+            });
+
+        RenderBuffer {
+            width: w,
+            height: h,
+            pixels,
+        }
+    }
+
     /// Generate a preview strip (for UI palette bar).
     pub fn preview_colors(&self, count: usize) -> Vec<[u8; 4]> {
         (0..count)
@@ -227,6 +542,73 @@ fn smooth_iteration(iterations: u32, norm_sq: f64) -> f64 {
         return iterations as f64;
     }
     iterations as f64 + 1.0 - log_zn.ln() / std::f64::consts::LN_2
+}
+
+/// Color an interior pixel according to the active interior mode.
+fn color_interior(
+    palette: &Palette,
+    extras: Option<&ExtrasBuffer>,
+    idx: usize,
+    params: &ColorParams,
+) -> [u8; 4] {
+    match params.interior_mode {
+        InteriorMode::Black => [0, 0, 0, 255],
+        InteriorMode::StripeAverage => {
+            if let Some(ext) = extras {
+                let s = ext.stripe_avg[idx].clamp(0.0, 1.0);
+                palette.sample(s * palette.colors.len() as f64)
+            } else {
+                [0, 0, 0, 255]
+            }
+        }
+    }
+}
+
+/// Build a cumulative histogram of escaped iteration counts.
+fn build_histogram_cdf(iter_buf: &IterationBuffer) -> Vec<u64> {
+    let max_iter = iter_buf.max_iterations as usize;
+    let mut hist = vec![0u64; max_iter + 1];
+    for &result in &iter_buf.data {
+        if let IterationResult::Escaped { iterations, .. } = result {
+            let idx = (iterations as usize).min(max_iter);
+            hist[idx] += 1;
+        }
+    }
+    // Convert to CDF.
+    for i in 1..hist.len() {
+        hist[i] += hist[i - 1];
+    }
+    hist
+}
+
+/// Compute the usable log-distance range for normalization.
+fn distance_range(distances: &[f64], data: &[IterationResult]) -> (f64, f64) {
+    let mut d_min = f64::MAX;
+    let mut d_max = f64::MIN;
+    for (i, &result) in data.iter().enumerate() {
+        if matches!(result, IterationResult::Escaped { .. }) {
+            let d = distances[i];
+            if d > 0.0 && d.is_finite() {
+                let ld = d.ln();
+                d_min = d_min.min(ld);
+                d_max = d_max.max(ld);
+            }
+        }
+    }
+    if d_min >= d_max {
+        d_min = 0.0;
+        d_max = 1.0;
+    }
+    (d_min, d_max)
+}
+
+/// Normalize a distance value to [0, 1] using log mapping.
+fn log_normalize(d: f64, d_min: f64, d_max: f64) -> f64 {
+    if d <= 0.0 || !d.is_finite() {
+        return 0.0;
+    }
+    let ld = d.ln();
+    ((ld - d_min) / (d_max - d_min)).clamp(0.0, 1.0)
 }
 
 fn lerp_color(a: [u8; 4], b: [u8; 4], t: f64) -> [u8; 4] {
@@ -372,6 +754,8 @@ mod tests {
             start_from: StartFrom::None,
             low_threshold_start: 10,
             low_threshold_end: 30,
+            coloring_mode: ColoringMode::Standard,
+            interior_mode: InteriorMode::Black,
         };
         let params_raw = ColorParams {
             smooth: false,
@@ -379,6 +763,8 @@ mod tests {
             start_from: StartFrom::None,
             low_threshold_start: 10,
             low_threshold_end: 30,
+            coloring_mode: ColoringMode::Standard,
+            interior_mode: InteriorMode::Black,
         };
         let smooth = p.color(result, &params_smooth);
         let raw = p.color(result, &params_raw);
@@ -418,6 +804,8 @@ mod tests {
             start_from: StartFrom::None,
             low_threshold_start: 10,
             low_threshold_end: 30,
+            coloring_mode: ColoringMode::Standard,
+            interior_mode: InteriorMode::Black,
         };
         let c0 = p.color(
             IterationResult::Escaped {
@@ -445,6 +833,8 @@ mod tests {
             start_from: StartFrom::Black,
             low_threshold_start: 10,
             low_threshold_end: 30,
+            coloring_mode: ColoringMode::Standard,
+            interior_mode: InteriorMode::Black,
         };
         let c = p.color(
             IterationResult::Escaped {
@@ -465,6 +855,8 @@ mod tests {
             start_from: StartFrom::White,
             low_threshold_start: 10,
             low_threshold_end: 30,
+            coloring_mode: ColoringMode::Standard,
+            interior_mode: InteriorMode::Black,
         };
         let c = p.color(
             IterationResult::Escaped {
@@ -485,6 +877,8 @@ mod tests {
             start_from: StartFrom::Black,
             low_threshold_start: 10,
             low_threshold_end: 30,
+            coloring_mode: ColoringMode::Standard,
+            interior_mode: InteriorMode::Black,
         };
         let c_low = p.color(
             IterationResult::Escaped {

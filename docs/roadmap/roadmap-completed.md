@@ -237,3 +237,22 @@ Reference: [Features_to_add.md](../Features_to_add.md) §3.
 - [x] Success/error notification overlay with 5-second fade-out
 - [x] `E` keyboard shortcut and File → Export Image menu item (only available from FractalExplorer screen)
 - [x] Unit tests for PNG creation and metadata embedding
+
+---
+
+## Phase 16 — Advanced Coloring
+
+**Objective:** Add advanced coloring techniques and a full in-app palette editing workflow.
+
+Reference: [optimization-report.md](../optimization-report.md) section 7.
+
+- [x] Added coloring modes: **Standard**, **Histogram equalization**, and **Distance estimation**
+- [x] Added interior coloring modes: **Black** and **Stripe Average**
+- [x] Implemented render extras path for derivative/stripe data required by advanced coloring
+- [x] Added palette data model in `mandelbrust-core` (`palette_data.rs`) with color stops and start/end fade options
+- [x] Added palette file I/O in app layer (`palette_io.rs`): list/load/save/rename/delete JSON palettes in `palettes/`
+- [x] Added tabbed **Display / color** panel with sections for Profiles, Palette, Coloring, and Interior
+- [x] Added in-app palette editor (`ui/palette_editor.rs`) with gradient preview, draggable stops, add/remove, and spacing helper
+- [x] Added color picker (`ui/color_picker.rs`) with RGB, HEX, and visual controls
+- [x] Integrated custom palettes and new coloring/interior settings into bookmark save/load
+- [x] Added bookmark migration script for older color-setting payloads (`scripts/migrate_bookmarks.py`)

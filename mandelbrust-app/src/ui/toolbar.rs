@@ -1,8 +1,13 @@
 use eframe::egui;
 
-use crate::app::{FractalMode, MandelbRustApp, HUD_CORNER_RADIUS, HUD_MARGIN};
+use crate::app::{
+    ColorSettingsTab, FractalMode, MandelbRustApp, HUD_CORNER_RADIUS, HUD_MARGIN,
+};
 use crate::color_profiles;
-use crate::display_color::{PaletteMode as DisplayPaletteMode, StartFrom as DisplayStartFrom};
+use crate::display_color::{
+    ColoringMode as DisplayColoringMode, InteriorMode as DisplayInteriorMode,
+    PaletteMode as DisplayPaletteMode, StartFrom as DisplayStartFrom,
+};
 
 const TOOLBAR_MARGIN: f32 = 8.0;
 
@@ -71,12 +76,18 @@ impl MandelbRustApp {
                             {
                                 self.reset_view();
                             }
-                            let pal_name = self.palettes[self.display_color.palette_index].name;
+                            let pal_name = self.palettes[self.display_color.palette_index].name.as_str();
                             if add_icon_btn(ui, mi(ICON_PALETTE), true)
                                 .on_hover_text(format!("Display/color settings ({pal_name})"))
                                 .clicked()
                             {
                                 self.show_palette_popup = !self.show_palette_popup;
+                            }
+                            if add_icon_btn(ui, mi(ICON_PHOTO_CAMERA), true)
+                                .on_hover_text("Export image (E)")
+                                .clicked()
+                            {
+                                self.open_export_dialog(ctx);
                             }
                             let aa_on = self.aa_level > 0;
                             let aa_label = match self.aa_level {
@@ -84,24 +95,26 @@ impl MandelbRustApp {
                                 4 => "4x4",
                                 _ => "Off",
                             };
-                            if add_icon_btn(ui, mi_state(ICON_DEBLUR, aa_on), true)
-                                .on_hover_text(format!(
-                                    "Anti-aliasing: {aa_label} (click to cycle)"
-                                ))
-                                .clicked()
-                            {
-                                self.aa_level = match self.aa_level {
-                                    0 => 2,
-                                    2 => 4,
-                                    _ => 0,
-                                };
-                                if self.aa_level == 0 {
-                                    self.current_aa = None;
-                                    palette_changed = true;
-                                } else {
-                                    params_changed = true;
-                                }
-                            }
+                            let aa_resp = add_icon_btn(ui, mi_state(ICON_DEBLUR, aa_on), true)
+                                .on_hover_text(format!("Anti-aliasing: {aa_label}"));
+                            egui::Popup::menu(&aa_resp)
+                                .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+                                .show(|ui| {
+                                    ui.set_min_width(60.0);
+                                    for (level, label) in [(0u32, "Off"), (2, "2x2"), (4, "4x4")] {
+                                        if ui.selectable_label(self.aa_level == level, label).clicked() {
+                                            if self.aa_level != level {
+                                                self.aa_level = level;
+                                                if level == 0 {
+                                                    self.current_aa = None;
+                                                    palette_changed = true;
+                                                } else {
+                                                    params_changed = true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
                             if add_icon_btn(ui, mi(ICON_BOOKMARK_ADD), true)
                                 .on_hover_text("Save bookmark (S)")
                                 .clicked()
@@ -152,14 +165,17 @@ impl MandelbRustApp {
                     });
             });
 
-        // ---- Display/color settings panel ----
+        // ---- Display/color settings panel (tabbed) ----
         if self.show_palette_popup {
             egui::Window::new("Display / color")
                 .id(egui::Id::new("display_color_panel"))
                 .collapsible(true)
                 .resizable(true)
-                .default_width(280.0)
-                .anchor(egui::Align2::RIGHT_TOP, [-TOOLBAR_MARGIN, 38.0 + self.menu_bar_height])
+                .default_width(300.0)
+                .default_pos(egui::pos2(
+                    ctx.input(|i| i.content_rect().max.x) - 320.0 - TOOLBAR_MARGIN,
+                    38.0 + self.menu_bar_height,
+                ))
                 .frame(
                     egui::Frame::NONE
                         .fill(egui::Color32::from_black_alpha(220))
@@ -170,197 +186,49 @@ impl MandelbRustApp {
                     ui.style_mut().visuals.override_text_color =
                         Some(egui::Color32::from_rgb(220, 220, 220));
 
-                    ui.heading("Profiles");
-                    let profile_names = color_profiles::list_profiles();
-                    if self.color_profile_selected.is_empty() && !profile_names.is_empty() {
-                        self.color_profile_selected = profile_names[0].clone();
-                    }
-                    egui::ComboBox::from_id_salt(egui::Id::new("color_profile_list"))
-                        .selected_text(if self.color_profile_selected.is_empty() {
-                            "(none)"
-                        } else {
-                            &self.color_profile_selected
-                        })
-                        .show_ui(ui, |ui| {
-                            for name in &profile_names {
-                                ui.selectable_value(
-                                    &mut self.color_profile_selected,
-                                    name.clone(),
-                                    name.as_str(),
-                                );
-                            }
-                        });
-                    if ui.button("Load").clicked() && !self.color_profile_selected.is_empty() {
-                        let mut loaded =
-                            color_profiles::load_profile(&self.color_profile_selected);
-                        if loaded.palette_index >= self.palettes.len() {
-                            loaded.palette_index = 0;
-                        }
-                        self.display_color = loaded;
-                        palette_changed = true;
-                        self.bump_minimap_revision();
-                    }
+                    // --- Tab bar ---
                     ui.horizontal(|ui| {
-                        ui.label("Save as:");
-                        ui.text_edit_singleline(&mut self.color_profile_save_name);
-                        let save_name = self.color_profile_save_name.trim();
-                        let save_name = if save_name.is_empty() {
-                            "Default"
-                        } else {
-                            save_name
-                        };
-                        if ui.button("Save").clicked() {
-                            if let Err(e) =
-                                color_profiles::save_profile(save_name, &self.display_color)
-                            {
-                                tracing::warn!("Failed to save color profile: {}", e);
-                            }
-                        }
-                    });
-
-                    ui.add_space(8.0);
-                    ui.heading("Palette");
-                    for (i, pal) in self.palettes.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            let swatch = pal.preview_colors(40);
-                            let (rect, _) = ui.allocate_exact_size(
-                                egui::vec2(40.0, 12.0),
-                                egui::Sense::hover(),
-                            );
-                            let painter = ui.painter_at(rect);
-                            for (j, c) in swatch.iter().enumerate() {
-                                painter.rect_filled(
-                                    egui::Rect::from_min_size(
-                                        egui::pos2(rect.min.x + j as f32, rect.min.y),
-                                        egui::vec2(1.0, 12.0),
-                                    ),
-                                    0.0,
-                                    egui::Color32::from_rgb(c[0], c[1], c[2]),
-                                );
-                            }
-                            let label = if i == self.display_color.palette_index {
-                                egui::RichText::new(pal.name).strong()
-                            } else {
-                                egui::RichText::new(pal.name)
-                            };
-                            if ui
-                                .selectable_label(i == self.display_color.palette_index, label)
-                                .clicked()
-                            {
-                                self.display_color.palette_index = i;
-                                palette_changed = true;
-                                self.pending_minimap_bump = true;
-                            }
-                        });
-                    }
-
-                    ui.add_space(8.0);
-                    ui.heading("Palette mode");
-                    ui.horizontal(|ui| {
-                        let by_cycles = matches!(
-                            self.display_color.palette_mode,
-                            DisplayPaletteMode::ByCycles { .. }
+                        ui.selectable_value(
+                            &mut self.color_settings_tab,
+                            ColorSettingsTab::Profiles,
+                            "Profiles",
                         );
-                        if ui.selectable_label(by_cycles, "By cycles").clicked() {
-                            let n = match self.display_color.palette_mode {
-                                DisplayPaletteMode::ByCycles { n } => n,
-                                DisplayPaletteMode::ByCycleLength { .. } => 1,
-                            };
-                            self.display_color.palette_mode =
-                                DisplayPaletteMode::ByCycles { n };
-                            palette_changed = true;
-                            self.bump_minimap_revision();
-                        }
-                        if ui.selectable_label(!by_cycles, "By cycle length").clicked() {
-                            let len = match self.display_color.palette_mode {
-                                DisplayPaletteMode::ByCycles { .. } => 256,
-                                DisplayPaletteMode::ByCycleLength { len } => len,
-                            };
-                            self.display_color.palette_mode =
-                                DisplayPaletteMode::ByCycleLength { len };
-                            palette_changed = true;
-                            self.bump_minimap_revision();
-                        }
+                        ui.selectable_value(
+                            &mut self.color_settings_tab,
+                            ColorSettingsTab::Palette,
+                            "Palette",
+                        );
+                        ui.selectable_value(
+                            &mut self.color_settings_tab,
+                            ColorSettingsTab::ColoringMode,
+                            "Coloring",
+                        );
+                        ui.selectable_value(
+                            &mut self.color_settings_tab,
+                            ColorSettingsTab::Interior,
+                            "Interior",
+                        );
                     });
-                    let (mut mode_val, is_cycles) = match self.display_color.palette_mode {
-                        DisplayPaletteMode::ByCycles { n } => (n as i32, true),
-                        DisplayPaletteMode::ByCycleLength { len } => (len as i32, false),
-                    };
-                    if ui
-                        .add(egui::DragValue::new(&mut mode_val).range(1..=i32::MAX))
-                        .changed()
-                    {
-                        let v = mode_val.max(1) as u32;
-                        self.display_color.palette_mode = if is_cycles {
-                            DisplayPaletteMode::ByCycles { n: v }
-                        } else {
-                            DisplayPaletteMode::ByCycleLength { len: v }
-                        };
-                        palette_changed = true;
-                        self.bump_minimap_revision();
-                    }
-                    ui.label(if is_cycles {
-                        "cycles"
-                    } else {
-                        "iterations per cycle"
-                    });
+                    ui.separator();
 
-                    ui.add_space(8.0);
-                    ui.heading("Start from");
-                    ui.horizontal(|ui| {
-                        for (opt, label) in [
-                            (DisplayStartFrom::None, "None"),
-                            (DisplayStartFrom::Black, "Black"),
-                            (DisplayStartFrom::White, "White"),
-                        ] {
-                            if ui
-                                .selectable_label(self.display_color.start_from == opt, label)
-                                .clicked()
-                            {
-                                self.display_color.start_from = opt;
-                                palette_changed = true;
-                                self.bump_minimap_revision();
+                    egui::ScrollArea::vertical()
+                        .max_height(500.0)
+                        .show(ui, |ui| {
+                        match self.color_settings_tab {
+                            ColorSettingsTab::Profiles => {
+                                self.draw_profiles_tab(ui, &mut palette_changed, &mut params_changed);
+                            }
+                            ColorSettingsTab::Palette => {
+                                self.draw_palette_tab(ui, &mut palette_changed, &mut params_changed);
+                            }
+                            ColorSettingsTab::ColoringMode => {
+                                self.draw_coloring_tab(ui, &mut palette_changed, &mut params_changed);
+                            }
+                            ColorSettingsTab::Interior => {
+                                self.draw_interior_tab(ui, &mut palette_changed, &mut params_changed);
                             }
                         }
                     });
-                    if self.display_color.start_from != DisplayStartFrom::None {
-                        ui.horizontal(|ui| {
-                            ui.label("Threshold start:");
-                            let mut start = self.display_color.low_threshold_start as i32;
-                            if ui
-                                .add(egui::DragValue::new(&mut start).range(0..=i32::MAX))
-                                .changed()
-                            {
-                                self.display_color.low_threshold_start = start.max(0) as u32;
-                                palette_changed = true;
-                                self.bump_minimap_revision();
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("Threshold end:");
-                            let mut end = self.display_color.low_threshold_end as i32;
-                            if ui
-                                .add(egui::DragValue::new(&mut end).range(0..=i32::MAX))
-                                .changed()
-                            {
-                                self.display_color.low_threshold_end = end.max(0) as u32;
-                                palette_changed = true;
-                                self.bump_minimap_revision();
-                            }
-                        });
-                    }
-
-                    ui.add_space(8.0);
-                    if ui
-                        .checkbox(
-                            &mut self.display_color.smooth_coloring,
-                            "Smooth coloring (log-log)",
-                        )
-                        .changed()
-                    {
-                        palette_changed = true;
-                        self.bump_minimap_revision();
-                    }
                 });
         }
 
@@ -506,6 +374,297 @@ impl MandelbRustApp {
         if palette_changed {
             self.recolorize(ctx);
             self.julia_explorer_recolorize = true;
+        }
+    }
+
+    // ===========================================================================
+    // Profiles tab
+    // ===========================================================================
+
+    fn draw_profiles_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        palette_changed: &mut bool,
+        _params_changed: &mut bool,
+    ) {
+        let profile_names = color_profiles::list_profiles();
+        if self.color_profile_selected.is_empty() && !profile_names.is_empty() {
+            self.color_profile_selected = profile_names[0].clone();
+        }
+        egui::ComboBox::from_id_salt(egui::Id::new("color_profile_list"))
+            .selected_text(if self.color_profile_selected.is_empty() {
+                "(none)"
+            } else {
+                &self.color_profile_selected
+            })
+            .show_ui(ui, |ui| {
+                for name in &profile_names {
+                    ui.selectable_value(
+                        &mut self.color_profile_selected,
+                        name.clone(),
+                        name.as_str(),
+                    );
+                }
+            });
+        if ui.button("Load").clicked() && !self.color_profile_selected.is_empty() {
+            let mut loaded = color_profiles::load_profile(&self.color_profile_selected);
+            if loaded.palette_index >= self.palettes.len() {
+                loaded.palette_index = 0;
+            }
+            self.display_color = loaded;
+            *palette_changed = true;
+            self.bump_minimap_revision();
+        }
+        ui.horizontal(|ui| {
+            ui.label("Save as:");
+            ui.text_edit_singleline(&mut self.color_profile_save_name);
+            let save_name = self.color_profile_save_name.trim();
+            let save_name = if save_name.is_empty() {
+                "Default"
+            } else {
+                save_name
+            };
+            if ui.button("Save").clicked() {
+                if let Err(e) = color_profiles::save_profile(save_name, &self.display_color) {
+                    tracing::warn!("Failed to save color profile: {}", e);
+                }
+            }
+        });
+    }
+
+    // ===========================================================================
+    // Palette tab
+    // ===========================================================================
+
+    fn draw_palette_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        palette_changed: &mut bool,
+        _params_changed: &mut bool,
+    ) {
+        // --- Palette mode (at the top) ---
+        ui.heading("Palette mode");
+        ui.horizontal(|ui| {
+            let by_cycles = matches!(
+                self.display_color.palette_mode,
+                DisplayPaletteMode::ByCycles { .. }
+            );
+            if ui.selectable_label(by_cycles, "By cycles").clicked() {
+                let n = match self.display_color.palette_mode {
+                    DisplayPaletteMode::ByCycles { n } => n,
+                    DisplayPaletteMode::ByCycleLength { .. } => 1,
+                };
+                self.display_color.palette_mode = DisplayPaletteMode::ByCycles { n };
+                *palette_changed = true;
+                self.bump_minimap_revision();
+            }
+            if ui.selectable_label(!by_cycles, "By cycle length").clicked() {
+                let len = match self.display_color.palette_mode {
+                    DisplayPaletteMode::ByCycles { .. } => 256,
+                    DisplayPaletteMode::ByCycleLength { len } => len,
+                };
+                self.display_color.palette_mode = DisplayPaletteMode::ByCycleLength { len };
+                *palette_changed = true;
+                self.bump_minimap_revision();
+            }
+        });
+        let (mut mode_val, is_cycles) = match self.display_color.palette_mode {
+            DisplayPaletteMode::ByCycles { n } => (n as i32, true),
+            DisplayPaletteMode::ByCycleLength { len } => (len as i32, false),
+        };
+        ui.horizontal(|ui| {
+            if ui
+                .add(egui::DragValue::new(&mut mode_val).range(1..=i32::MAX))
+                .changed()
+            {
+                let v = mode_val.max(1) as u32;
+                self.display_color.palette_mode = if is_cycles {
+                    DisplayPaletteMode::ByCycles { n: v }
+                } else {
+                    DisplayPaletteMode::ByCycleLength { len: v }
+                };
+                *palette_changed = true;
+                self.bump_minimap_revision();
+            }
+            ui.label(if is_cycles {
+                "cycles"
+            } else {
+                "iterations per cycle"
+            });
+        });
+
+        ui.add_space(8.0);
+
+        // --- Palette list (user palettes first, then builtins) ---
+        if self.show_palette_list(ui) {
+            *palette_changed = true;
+        }
+    }
+
+    // ===========================================================================
+    // Coloring mode tab
+    // ===========================================================================
+
+    fn draw_coloring_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        palette_changed: &mut bool,
+        params_changed: &mut bool,
+    ) {
+        if ui
+            .checkbox(
+                &mut self.display_color.smooth_coloring,
+                "Smooth coloring (log-log)",
+            )
+            .changed()
+        {
+            *palette_changed = true;
+            self.bump_minimap_revision();
+        }
+
+        ui.add_space(8.0);
+        ui.heading("Coloring mode");
+        let old_mode = self.display_color.coloring_mode;
+        for (mode, label, tip) in [
+            (
+                DisplayColoringMode::Standard,
+                "Standard",
+                "Map iteration count directly to palette position",
+            ),
+            (
+                DisplayColoringMode::Histogram,
+                "Histogram",
+                "Equalize colors so all palette entries are used evenly",
+            ),
+            (
+                DisplayColoringMode::DistanceEstimation,
+                "Distance",
+                "Color by estimated distance to the fractal boundary",
+            ),
+        ] {
+            if ui
+                .selectable_label(self.display_color.coloring_mode == mode, label)
+                .on_hover_text(tip)
+                .clicked()
+            {
+                self.display_color.coloring_mode = mode;
+            }
+        }
+        if self.display_color.coloring_mode != old_mode {
+            if self.display_color.coloring_mode == DisplayColoringMode::DistanceEstimation
+                && self.current_extras.is_none()
+            {
+                *params_changed = true;
+            } else {
+                *palette_changed = true;
+            }
+            self.bump_minimap_revision();
+        }
+
+        ui.add_space(8.0);
+
+        // --- Start from ---
+        ui.heading("Start from");
+        ui.horizontal(|ui| {
+            for (opt, label) in [
+                (DisplayStartFrom::None, "None"),
+                (DisplayStartFrom::Black, "Black"),
+                (DisplayStartFrom::White, "White"),
+            ] {
+                if ui
+                    .selectable_label(self.display_color.start_from == opt, label)
+                    .clicked()
+                {
+                    self.display_color.start_from = opt;
+                    *palette_changed = true;
+                    self.bump_minimap_revision();
+                }
+            }
+        });
+        if self.display_color.start_from != DisplayStartFrom::None {
+            ui.horizontal(|ui| {
+                ui.label("Threshold start:");
+                let mut start = self.display_color.low_threshold_start as i32;
+                if ui
+                    .add(egui::DragValue::new(&mut start).range(0..=i32::MAX))
+                    .changed()
+                {
+                    self.display_color.low_threshold_start = start.max(0) as u32;
+                    *palette_changed = true;
+                    self.bump_minimap_revision();
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Threshold end:");
+                let mut end = self.display_color.low_threshold_end as i32;
+                if ui
+                    .add(egui::DragValue::new(&mut end).range(0..=i32::MAX))
+                    .changed()
+                {
+                    self.display_color.low_threshold_end = end.max(0) as u32;
+                    *palette_changed = true;
+                    self.bump_minimap_revision();
+                }
+            });
+        }
+    }
+
+    // ===========================================================================
+    // Interior tab
+    // ===========================================================================
+
+    fn draw_interior_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        palette_changed: &mut bool,
+        params_changed: &mut bool,
+    ) {
+        ui.heading("Interior coloring");
+        let old_interior = self.display_color.interior_mode;
+        for (mode, label, tip) in [
+            (
+                DisplayInteriorMode::Black,
+                "Black",
+                "Fill non-escaping pixels with solid black",
+            ),
+            (
+                DisplayInteriorMode::StripeAverage,
+                "Stripe average",
+                "Color interior by orbit stripe patterns (needs extras)",
+            ),
+        ] {
+            if ui
+                .selectable_label(self.display_color.interior_mode == mode, label)
+                .on_hover_text(tip)
+                .clicked()
+            {
+                self.display_color.interior_mode = mode;
+            }
+        }
+        if self.display_color.interior_mode != old_interior {
+            if self.display_color.interior_mode == DisplayInteriorMode::StripeAverage
+                && self.current_extras.is_none()
+            {
+                *params_changed = true;
+            } else {
+                *palette_changed = true;
+            }
+            self.bump_minimap_revision();
+        }
+        if self.display_color.interior_mode == DisplayInteriorMode::StripeAverage {
+            let mut density = self.display_color.stripe_density as f32;
+            if ui
+                .add(
+                    egui::Slider::new(&mut density, 0.1..=20.0)
+                        .text("Stripe density")
+                        .logarithmic(true),
+                )
+                .changed()
+            {
+                self.display_color.stripe_density = density as f64;
+                *params_changed = true;
+                self.bump_minimap_revision();
+            }
         }
     }
 }

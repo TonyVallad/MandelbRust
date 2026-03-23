@@ -7,6 +7,7 @@ pub mod julia;
 pub mod julia_dd;
 pub mod mandelbrot;
 pub mod mandelbrot_dd;
+pub mod palette_data;
 pub mod viewport;
 
 // Re-export primary types for convenience.
@@ -14,7 +15,7 @@ pub use complex::Complex;
 pub use complex_dd::ComplexDD;
 pub use double_double::DoubleDouble;
 pub use error::CoreError;
-pub use fractal::{Fractal, FractalParams, IterationResult};
+pub use fractal::{Fractal, FractalParams, IterationExtras, IterationResult};
 pub use julia::Julia;
 pub use julia_dd::JuliaDD;
 pub use mandelbrot::Mandelbrot;

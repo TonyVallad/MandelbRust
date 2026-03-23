@@ -10,6 +10,7 @@ mod input;
 mod io_worker;
 mod j_preview;
 mod navigation;
+mod palette_io;
 mod preferences;
 mod render_bridge;
 mod ui;

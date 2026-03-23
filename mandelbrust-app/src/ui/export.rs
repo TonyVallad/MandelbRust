@@ -13,7 +13,9 @@ use mandelbrust_render::{ExportMetadata, RenderCancel};
 use crate::app::{FractalMode, MandelbRustApp};
 use crate::app_dir;
 use crate::display_color::{
-    DisplayColorSettings, PaletteMode as DisplayPaletteMode, StartFrom as DisplayStartFrom,
+    ColoringMode as DisplayColoringMode, DisplayColorSettings,
+    InteriorMode as DisplayInteriorMode, PaletteMode as DisplayPaletteMode,
+    StartFrom as DisplayStartFrom,
 };
 use crate::render_bridge::render_for_mode;
 
@@ -261,21 +263,39 @@ impl MandelbRustApp {
                 ui.label(egui::RichText::new("Color settings").strong());
                 ui.add_space(2.0);
 
-                // Palette picker
+                // Palette picker (user palettes + builtins)
                 ui.horizontal(|ui| {
                     ui.label("Palette:");
-                    let pal_idx = self.export_state.display_color.palette_index;
-                    let pal_name = self.palettes.get(pal_idx).map(|p| p.name).unwrap_or("?");
+                    let selected_name = if let Some(ref cn) = self.export_state.display_color.custom_palette_name {
+                        cn.clone()
+                    } else {
+                        self.palettes
+                            .get(self.export_state.display_color.palette_index)
+                            .map(|p| p.name.clone())
+                            .unwrap_or_else(|| "?".into())
+                    };
                     egui::ComboBox::from_id_salt("export_palette")
-                        .selected_text(pal_name)
-                        .width(140.0)
+                        .selected_text(&selected_name)
+                        .width(160.0)
                         .show_ui(ui, |ui| {
+                            for def in &self.user_palette_defs {
+                                let active = self.export_state.display_color.custom_palette_name.as_deref()
+                                    == Some(&def.name);
+                                if ui.selectable_label(active, &def.name).clicked() {
+                                    self.export_state.display_color.custom_palette_name =
+                                        Some(def.name.clone());
+                                }
+                            }
+                            if !self.user_palette_defs.is_empty() {
+                                ui.separator();
+                            }
                             for (i, pal) in self.palettes.iter().enumerate() {
-                                ui.selectable_value(
-                                    &mut self.export_state.display_color.palette_index,
-                                    i,
-                                    pal.name,
-                                );
+                                let active = self.export_state.display_color.custom_palette_name.is_none()
+                                    && self.export_state.display_color.palette_index == i;
+                                if ui.selectable_label(active, pal.name.as_str()).clicked() {
+                                    self.export_state.display_color.palette_index = i;
+                                    self.export_state.display_color.custom_palette_name = None;
+                                }
                             }
                         });
                 });
@@ -318,6 +338,60 @@ impl MandelbRustApp {
                     ui.label(if is_cycles { "cycles" } else { "iterations per cycle" });
                 });
 
+                // Smooth coloring
+                ui.add_space(2.0);
+                ui.checkbox(
+                    &mut self.export_state.display_color.smooth_coloring,
+                    "Smooth coloring",
+                );
+
+                // Coloring mode
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label("Coloring:");
+                    for (mode, label) in [
+                        (DisplayColoringMode::Standard, "Standard"),
+                        (DisplayColoringMode::Histogram, "Histogram"),
+                        (DisplayColoringMode::DistanceEstimation, "Distance"),
+                    ] {
+                        ui.selectable_value(
+                            &mut self.export_state.display_color.coloring_mode,
+                            mode,
+                            label,
+                        );
+                    }
+                });
+
+                // Interior mode
+                ui.add_space(2.0);
+                ui.horizontal(|ui| {
+                    ui.label("Interior:");
+                    for (mode, label) in [
+                        (DisplayInteriorMode::Black, "Black"),
+                        (DisplayInteriorMode::StripeAverage, "Stripe avg"),
+                    ] {
+                        ui.selectable_value(
+                            &mut self.export_state.display_color.interior_mode,
+                            mode,
+                            label,
+                        );
+                    }
+                });
+
+                if self.export_state.display_color.interior_mode == DisplayInteriorMode::StripeAverage {
+                    ui.horizontal(|ui| {
+                        ui.add_space(48.0);
+                        ui.label("Density:");
+                        let mut d = self.export_state.display_color.stripe_density as f32;
+                        if ui
+                            .add(egui::Slider::new(&mut d, 0.1..=20.0).logarithmic(true))
+                            .changed()
+                        {
+                            self.export_state.display_color.stripe_density = d as f64;
+                        }
+                    });
+                }
+
                 // Start from
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
@@ -356,13 +430,6 @@ impl MandelbRustApp {
                         }
                     });
                 }
-
-                // Smooth coloring
-                ui.add_space(2.0);
-                ui.checkbox(
-                    &mut self.export_state.display_color.smooth_coloring,
-                    "Smooth coloring",
-                );
 
                 ui.add_space(8.0);
                 ui.separator();
@@ -486,10 +553,24 @@ impl MandelbRustApp {
         let mode = self.mode;
         let julia_c = self.julia_c;
         let export_dc = &self.export_state.display_color;
-        let pal_idx = export_dc.palette_index.min(self.palettes.len().saturating_sub(1));
-        let palette = self.palettes[pal_idx].clone();
+        let palette = if let Some(ref name) = export_dc.custom_palette_name {
+            self.user_palette_defs
+                .iter()
+                .find(|d| d.name == *name)
+                .map(mandelbrust_render::Palette::from_definition)
+                .unwrap_or_else(|| {
+                    let idx = export_dc.palette_index.min(self.palettes.len().saturating_sub(1));
+                    self.palettes[idx].clone()
+                })
+        } else {
+            let idx = export_dc.palette_index.min(self.palettes.len().saturating_sub(1));
+            self.palettes[idx].clone()
+        };
         let color_params = Self::color_params_from_display(export_dc, max_iter);
         let display_color = export_dc.clone();
+        let needs_extras = export_dc.coloring_mode == DisplayColoringMode::DistanceEstimation
+            || export_dc.interior_mode == DisplayInteriorMode::StripeAverage;
+        let stripe_density = export_dc.stripe_density;
 
         let center_re = format!("{:.15}", self.viewport.center.re);
         let center_im = format!("{:+.15}", self.viewport.center.im);
@@ -531,6 +612,7 @@ impl MandelbRustApp {
         let job = ExportJob {
             mode, params, julia_c, viewport, cancel, aa_level,
             palette, color_params, metadata, path,
+            compute_extras: needs_extras, stripe_density,
         };
 
         let ctx = self.egui_ctx.clone();
@@ -588,12 +670,25 @@ impl MandelbRustApp {
             DisplayStartFrom::Black => mandelbrust_render::StartFrom::Black,
             DisplayStartFrom::White => mandelbrust_render::StartFrom::White,
         };
+        let coloring_mode = match dc.coloring_mode {
+            DisplayColoringMode::Standard => mandelbrust_render::ColoringMode::Standard,
+            DisplayColoringMode::Histogram => mandelbrust_render::ColoringMode::Histogram,
+            DisplayColoringMode::DistanceEstimation => {
+                mandelbrust_render::ColoringMode::DistanceEstimation
+            }
+        };
+        let interior_mode = match dc.interior_mode {
+            DisplayInteriorMode::Black => mandelbrust_render::InteriorMode::Black,
+            DisplayInteriorMode::StripeAverage => mandelbrust_render::InteriorMode::StripeAverage,
+        };
         mandelbrust_render::ColorParams {
             smooth: dc.smooth_coloring,
             cycle_length: dc.cycle_length(max_iterations),
             start_from,
             low_threshold_start: dc.low_threshold_start,
             low_threshold_end: dc.low_threshold_end,
+            coloring_mode,
+            interior_mode,
         }
     }
 }
@@ -613,22 +708,26 @@ struct ExportJob {
     color_params: mandelbrust_render::ColorParams,
     metadata: ExportMetadata,
     path: PathBuf,
+    compute_extras: bool,
+    stripe_density: f64,
 }
 
 fn export_worker(job: &ExportJob) -> ExportWorkerResult {
     let result = render_for_mode(
         job.mode, job.params, job.julia_c, &job.viewport, &job.cancel, job.aa_level,
+        job.compute_extras, job.stripe_density,
     );
 
     if result.cancelled {
         return ExportWorkerResult::Error("Export cancelled".into());
     }
 
-    let buffer = if let Some(ref aa) = result.aa_samples {
-        job.palette.colorize_aa(&result.iterations, aa, &job.color_params)
-    } else {
-        job.palette.colorize(&result.iterations, &job.color_params)
-    };
+    let buffer = job.palette.colorize_advanced(
+        &result.iterations,
+        result.extras.as_ref(),
+        result.aa_samples.as_ref(),
+        &job.color_params,
+    );
 
     match mandelbrust_render::export_png(
         &buffer.pixels,

@@ -5,9 +5,10 @@ use std::time::{Duration, Instant};
 use rayon::prelude::*;
 use tracing::{debug, info};
 
-use mandelbrust_core::{Complex, Fractal, IterationResult, Viewport};
+use mandelbrust_core::{Complex, Fractal, IterationExtras, IterationResult, Viewport};
 
 use crate::aa::AaSamples;
+use crate::extras_buffer::ExtrasBuffer;
 use crate::iteration_buffer::IterationBuffer;
 use crate::tile::{build_tile_grid, classify_tiles_for_symmetry, ClassifiedTile, Tile, TileKind};
 
@@ -81,12 +82,35 @@ impl Default for RenderCancel {
 /// to produce displayable pixels.
 pub struct RenderResult {
     pub iterations: IterationBuffer,
+    pub extras: Option<ExtrasBuffer>,
     pub aa_samples: Option<AaSamples>,
     pub elapsed: Duration,
     pub cancelled: bool,
     pub tiles_rendered: usize,
     pub tiles_mirrored: usize,
     pub tiles_border_traced: usize,
+}
+
+/// Render-time options controlling optional features.
+#[derive(Debug, Clone)]
+pub struct RenderOptions {
+    /// Enable real-axis symmetry optimisation (Mandelbrot only).
+    pub use_real_axis_symmetry: bool,
+    /// Compute per-pixel extras (distance estimate, stripe average).
+    /// Disables border tracing and symmetry when true.
+    pub compute_extras: bool,
+    /// Stripe density for interior stripe average coloring.
+    pub stripe_density: f64,
+}
+
+impl Default for RenderOptions {
+    fn default() -> Self {
+        Self {
+            use_real_axis_symmetry: false,
+            compute_extras: false,
+            stripe_density: 1.0,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -150,32 +174,58 @@ fn check_border_uniform<F: Fractal>(
 // Per-tile rendering
 // ---------------------------------------------------------------------------
 
+struct TileData {
+    iterations: Vec<IterationResult>,
+    extras: Option<Vec<IterationExtras>>,
+}
+
 /// Render a single tile, trying border-trace optimisation first.
 ///
-/// Returns per-pixel `IterationResult` data (no coloring).
-/// If border tracing succeeds the tile is flood-filled in O(border) instead
-/// of O(area).  The `bt_count` atomic is incremented when this happens.
+/// When `compute_extras` is true, border tracing is skipped and per-pixel
+/// extras (distance, stripe average) are computed alongside iteration data.
 fn render_tile<F: Fractal>(
     fractal: &F,
     viewport: &Viewport,
     tile: &Tile,
     bt_count: &AtomicUsize,
-) -> Vec<IterationResult> {
-    // Try border tracing.
-    if let Some(fill) = check_border_uniform(fractal, viewport, tile) {
-        bt_count.fetch_add(1, Ordering::Relaxed);
-        return vec![fill; tile.pixel_count()];
+    compute_extras: bool,
+    stripe_density: f64,
+) -> TileData {
+    if !compute_extras {
+        if let Some(fill) = check_border_uniform(fractal, viewport, tile) {
+            bt_count.fetch_add(1, Ordering::Relaxed);
+            return TileData {
+                iterations: vec![fill; tile.pixel_count()],
+                extras: None,
+            };
+        }
     }
 
-    // Full per-pixel computation.
-    let mut data = Vec::with_capacity(tile.pixel_count());
+    let count = tile.pixel_count();
+    let mut iter_data = Vec::with_capacity(count);
+    let mut extras_data = if compute_extras {
+        Some(Vec::with_capacity(count))
+    } else {
+        None
+    };
+
     for py in 0..tile.height {
         for px in 0..tile.width {
             let c = map_pixel(fractal, viewport, tile.x + px, tile.y + py);
-            data.push(fractal.iterate(c));
+            if compute_extras {
+                let (result, ext) = fractal.iterate_with_extras(c, stripe_density);
+                iter_data.push(result);
+                extras_data.as_mut().unwrap().push(ext);
+            } else {
+                iter_data.push(fractal.iterate(c));
+            }
         }
     }
-    data
+
+    TileData {
+        iterations: iter_data,
+        extras: extras_data,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -189,19 +239,17 @@ fn render_tile<F: Fractal>(
 /// can be used from another thread to abort the render.
 ///
 /// Returns raw iteration data — apply a `Palette` to get displayable pixels.
-///
-/// Set `use_real_axis_symmetry` to `true` only for fractals symmetric about the real axis
-/// (e.g. Mandelbrot). Julia sets are not symmetric in general, so pass `false` for them.
 pub fn render<F: Fractal + Sync>(
     fractal: &F,
     viewport: &Viewport,
     cancel: &Arc<RenderCancel>,
-    use_real_axis_symmetry: bool,
+    opts: &RenderOptions,
 ) -> RenderResult {
     let start = Instant::now();
     let gen = cancel.generation();
     let bt_count = AtomicUsize::new(0);
     let max_iter = fractal.params().max_iterations;
+    let compute_extras = opts.compute_extras;
 
     let tiles = build_tile_grid(viewport.width, viewport.height);
     let tile_count = tiles.len();
@@ -209,17 +257,18 @@ pub fn render<F: Fractal + Sync>(
         tile_count,
         width = viewport.width,
         height = viewport.height,
+        compute_extras,
         "Starting tiled render"
     );
 
-    // Symmetry optimisation only valid for Mandelbrot (real-axis symmetric); Julia must not use it.
-    let classified = if use_real_axis_symmetry {
+    // Symmetry disabled when extras are on (stripe avg is not symmetric).
+    let use_symmetry = opts.use_real_axis_symmetry && !compute_extras;
+    let classified = if use_symmetry {
         classify_tiles_for_symmetry(&tiles, viewport.height, viewport.center.im)
     } else {
         None
     };
 
-    // Set up progress tracking for the tile phase.
     let renderable_count = if let Some(ref ct) = classified {
         ct.iter()
             .filter(|c| !matches!(c.kind, TileKind::Mirror { .. }))
@@ -230,18 +279,22 @@ pub fn render<F: Fractal + Sync>(
     cancel.reset_progress(renderable_count);
 
     let (tile_data, cancelled, tiles_rendered, tiles_mirrored) = if let Some(ref ct) = classified {
-        render_with_symmetry(fractal, viewport, ct, cancel, gen, &bt_count)
+        render_with_symmetry(fractal, viewport, ct, cancel, gen, &bt_count, compute_extras, opts.stripe_density)
     } else {
-        render_all_tiles(fractal, viewport, &tiles, cancel, gen, &bt_count)
+        render_all_tiles(fractal, viewport, &tiles, cancel, gen, &bt_count, compute_extras, opts.stripe_density)
     };
 
-    // Assemble into iteration buffer.
     let mut iterations = IterationBuffer::new(viewport.width, viewport.height, max_iter);
+    let mut extras = if compute_extras {
+        Some(ExtrasBuffer::new(viewport.width, viewport.height))
+    } else {
+        None
+    };
 
     if let Some(ref ct) = classified {
-        assemble_symmetric(&mut iterations, ct, &tile_data);
+        assemble_symmetric(&mut iterations, extras.as_mut(), ct, &tile_data);
     } else {
-        assemble_normal(&mut iterations, &tiles, &tile_data);
+        assemble_normal(&mut iterations, extras.as_mut(), &tiles, &tile_data);
     }
 
     let tiles_border_traced = bt_count.load(Ordering::Relaxed);
@@ -253,6 +306,7 @@ pub fn render<F: Fractal + Sync>(
 
     RenderResult {
         iterations,
+        extras,
         aa_samples: None,
         elapsed,
         cancelled,
@@ -262,7 +316,6 @@ pub fn render<F: Fractal + Sync>(
     }
 }
 
-/// Render without symmetry: every tile is computed.
 fn render_all_tiles<F: Fractal + Sync>(
     fractal: &F,
     viewport: &Viewport,
@@ -270,14 +323,16 @@ fn render_all_tiles<F: Fractal + Sync>(
     cancel: &Arc<RenderCancel>,
     gen: u64,
     bt_count: &AtomicUsize,
-) -> (Vec<Option<Vec<IterationResult>>>, bool, usize, usize) {
-    let results: Vec<Option<Vec<IterationResult>>> = tiles
+    compute_extras: bool,
+    stripe_density: f64,
+) -> (Vec<Option<TileData>>, bool, usize, usize) {
+    let results: Vec<Option<TileData>> = tiles
         .par_iter()
         .map(|tile| {
             if cancel.generation() != gen {
                 return None;
             }
-            let data = render_tile(fractal, viewport, tile, bt_count);
+            let data = render_tile(fractal, viewport, tile, bt_count, compute_extras, stripe_density);
             cancel.inc_progress();
             Some(data)
         })
@@ -288,7 +343,6 @@ fn render_all_tiles<F: Fractal + Sync>(
     (results, cancelled, rendered, 0)
 }
 
-/// Render with symmetry: skip Mirror tiles, only render Normal + Primary.
 fn render_with_symmetry<F: Fractal + Sync>(
     fractal: &F,
     viewport: &Viewport,
@@ -296,17 +350,19 @@ fn render_with_symmetry<F: Fractal + Sync>(
     cancel: &Arc<RenderCancel>,
     gen: u64,
     bt_count: &AtomicUsize,
-) -> (Vec<Option<Vec<IterationResult>>>, bool, usize, usize) {
-    let results: Vec<Option<Vec<IterationResult>>> = classified
+    compute_extras: bool,
+    stripe_density: f64,
+) -> (Vec<Option<TileData>>, bool, usize, usize) {
+    let results: Vec<Option<TileData>> = classified
         .par_iter()
         .map(|ct| {
             if cancel.generation() != gen {
                 return None;
             }
             match ct.kind {
-                TileKind::Mirror { .. } => None, // will be filled from primary
+                TileKind::Mirror { .. } => None,
                 _ => {
-                    let data = render_tile(fractal, viewport, &ct.tile, bt_count);
+                    let data = render_tile(fractal, viewport, &ct.tile, bt_count, compute_extras, stripe_density);
                     cancel.inc_progress();
                     Some(data)
                 }
@@ -323,37 +379,41 @@ fn render_with_symmetry<F: Fractal + Sync>(
     (results, cancelled, rendered, mirrored)
 }
 
-/// Assemble tile results into the iteration buffer (no symmetry).
 fn assemble_normal(
     buffer: &mut IterationBuffer,
+    mut extras: Option<&mut ExtrasBuffer>,
     tiles: &[Tile],
-    tile_data: &[Option<Vec<IterationResult>>],
+    tile_data: &[Option<TileData>],
 ) {
     for (tile, data) in tiles.iter().zip(tile_data.iter()) {
         if let Some(d) = data {
-            buffer.blit_tile(tile, d);
+            buffer.blit_tile(tile, &d.iterations);
+            if let (Some(ext_buf), Some(ext_data)) = (extras.as_deref_mut(), d.extras.as_ref()) {
+                ext_buf.blit_tile(tile, ext_data);
+            }
         }
     }
 }
 
-/// Assemble tile results with symmetry: blit primaries and their mirrors.
 fn assemble_symmetric(
     buffer: &mut IterationBuffer,
+    mut extras: Option<&mut ExtrasBuffer>,
     classified: &[ClassifiedTile],
-    tile_data: &[Option<Vec<IterationResult>>],
+    tile_data: &[Option<TileData>],
 ) {
-    // First pass: blit all rendered tiles (Normal + Primary).
     for (ct, data) in classified.iter().zip(tile_data.iter()) {
         if let Some(d) = data {
-            buffer.blit_tile(&ct.tile, d);
+            buffer.blit_tile(&ct.tile, &d.iterations);
+            if let (Some(ext_buf), Some(ext_data)) = (extras.as_deref_mut(), d.extras.as_ref()) {
+                ext_buf.blit_tile(&ct.tile, ext_data);
+            }
         }
     }
 
-    // Second pass: blit mirrors from their primary's data.
     for ct in classified.iter() {
         if let TileKind::Mirror { primary_index } = ct.kind {
             if let Some(ref primary_data) = tile_data[primary_index] {
-                buffer.blit_tile_mirrored(&ct.tile, primary_data);
+                buffer.blit_tile_mirrored(&ct.tile, &primary_data.iterations);
             }
         }
     }
@@ -364,17 +424,25 @@ mod tests {
     use super::*;
     use mandelbrust_core::{FractalParams, Mandelbrot};
 
+    fn opts_standard() -> RenderOptions {
+        RenderOptions {
+            use_real_axis_symmetry: true,
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn basic_render_produces_iteration_data() {
         let mandelbrot = Mandelbrot::default();
         let viewport = Viewport::default_mandelbrot(128, 128);
         let cancel = Arc::new(RenderCancel::new());
 
-        let result = render(&mandelbrot, &viewport, &cancel, true);
+        let result = render(&mandelbrot, &viewport, &cancel, &opts_standard());
 
         assert!(!result.cancelled);
         assert_eq!(result.iterations.data.len(), 128 * 128);
         assert!(result.tiles_rendered > 0);
+        assert!(result.extras.is_none());
     }
 
     #[test]
@@ -385,7 +453,7 @@ mod tests {
             Viewport::new(mandelbrust_core::Complex::new(-0.5, 0.0), 0.01, 128, 128).unwrap();
         let cancel = Arc::new(RenderCancel::new());
 
-        let result = render(&mandelbrot, &viewport, &cancel, true);
+        let result = render(&mandelbrot, &viewport, &cancel, &opts_standard());
 
         assert!(!result.cancelled);
         assert!(
@@ -396,20 +464,38 @@ mod tests {
 
     #[test]
     fn border_tracing_fills_uniform_tiles() {
-        // Zoom into a region well outside the set — all tiles should be uniform.
         let params = FractalParams::new(256, 2.0).unwrap();
         let mandelbrot = Mandelbrot::new(params);
         let viewport =
             Viewport::new(mandelbrust_core::Complex::new(5.0, 5.0), 0.001, 128, 128).unwrap();
         let cancel = Arc::new(RenderCancel::new());
 
-        let result = render(&mandelbrot, &viewport, &cancel, true);
+        let result = render(&mandelbrot, &viewport, &cancel, &opts_standard());
 
         assert!(!result.cancelled);
         assert!(
             result.tiles_border_traced > 0,
             "tiles far outside the set should be border-traced"
         );
+    }
+
+    #[test]
+    fn render_with_extras_produces_buffers() {
+        let mandelbrot = Mandelbrot::default();
+        let viewport = Viewport::default_mandelbrot(128, 128);
+        let cancel = Arc::new(RenderCancel::new());
+        let opts = RenderOptions {
+            use_real_axis_symmetry: false,
+            compute_extras: true,
+            stripe_density: 1.0,
+        };
+
+        let result = render(&mandelbrot, &viewport, &cancel, &opts);
+
+        assert!(!result.cancelled);
+        let ext = result.extras.as_ref().expect("extras should be present");
+        assert_eq!(ext.distance.len(), 128 * 128);
+        assert_eq!(ext.stripe_avg.len(), 128 * 128);
     }
 
     #[test]
@@ -424,7 +510,7 @@ mod tests {
             cancel_clone.cancel();
         });
 
-        let result = render(&mandelbrot, &viewport, &cancel, true);
+        let result = render(&mandelbrot, &viewport, &cancel, &opts_standard());
         if result.cancelled {
             let total_tiles = ((1024 + 63) / 64) * ((1024 + 63) / 64);
             assert!(

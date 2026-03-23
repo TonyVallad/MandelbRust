@@ -11,15 +11,17 @@ use mandelbrust_core::{
     Complex, ComplexDD, DoubleDouble, FractalParams, Julia, Viewport,
 };
 use mandelbrust_render::{
-    builtin_palettes, AaSamples, ColorParams, IterationBuffer, Palette, RenderCancel,
-    RenderResult, StartFrom as RenderStartFrom,
+    builtin_palettes, AaSamples, ColorParams, ColoringMode as RenderColoringMode, ExtrasBuffer,
+    InteriorMode as RenderInteriorMode, IterationBuffer, Palette, RenderCancel, RenderResult,
+    StartFrom as RenderStartFrom,
 };
 
 use crate::app_state::AppScreen;
 use crate::bookmarks::BookmarkStore;
 use crate::color_profiles;
 use crate::display_color::{
-    DisplayColorSettings, StartFrom as DisplayStartFrom,
+    ColoringMode as DisplayColoringMode, DisplayColorSettings, InteriorMode as DisplayInteriorMode,
+    StartFrom as DisplayStartFrom,
 };
 use crate::preferences::{AppPreferences, LastView};
 use crate::render_bridge::{
@@ -104,6 +106,25 @@ pub(crate) enum ActiveDialog {
     UpdateOrSave,
 }
 
+/// Tabs for the color settings window (Task 16.7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum ColorSettingsTab {
+    #[default]
+    Profiles,
+    Palette,
+    ColoringMode,
+    Interior,
+}
+
+/// Tabs for the general settings window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum SettingsTab {
+    #[default]
+    General,
+    Minimap,
+    JuliaExplorer,
+}
+
 // ---------------------------------------------------------------------------
 // Window icon
 // ---------------------------------------------------------------------------
@@ -160,6 +181,15 @@ pub(crate) struct MandelbRustApp {
     pub(crate) palettes: Vec<Palette>,
     pub(crate) display_color: DisplayColorSettings,
     pub(crate) current_iterations: Option<IterationBuffer>,
+    pub(crate) current_extras: Option<ExtrasBuffer>,
+
+    // User-defined palettes
+    pub(crate) user_palette_defs: Vec<mandelbrust_core::palette_data::PaletteDefinition>,
+    pub(crate) user_palette_cache: Vec<Palette>,
+    pub(crate) palette_editor_state: crate::ui::palette_editor::PaletteEditorState,
+    pub(crate) show_palette_editor_window: bool,
+    pub(crate) color_settings_tab: ColorSettingsTab,
+    pub(crate) settings_tab: SettingsTab,
 
     // UI state
     pub(crate) panel_size: [u32; 2],
@@ -336,6 +366,13 @@ impl MandelbRustApp {
             display_color.palette_index = 0;
         }
 
+        crate::palette_io::ensure_palettes_dir();
+        let user_palette_defs = crate::palette_io::load_all_palettes();
+        let user_palette_cache: Vec<Palette> = user_palette_defs
+            .iter()
+            .map(Palette::from_definition)
+            .collect();
+
         let mut bookmark_store = BookmarkStore::load(&prefs.bookmarks_dir);
         bookmark_store.sort_by_date();
         let bookmarks_dir_display = bookmark_store.directory().to_string_lossy().to_string();
@@ -372,6 +409,14 @@ impl MandelbRustApp {
             palettes,
             display_color,
             current_iterations: None,
+            current_extras: None,
+
+            user_palette_defs,
+            user_palette_cache,
+            palette_editor_state: crate::ui::palette_editor::PaletteEditorState::default(),
+            show_palette_editor_window: false,
+            color_settings_tab: ColorSettingsTab::default(),
+            settings_tab: SettingsTab::default(),
 
             panel_size: [w, h],
             show_hud: true,
@@ -466,7 +511,25 @@ impl MandelbRustApp {
     // -- Palette helpers ---------------------------------------------------
 
     pub(crate) fn current_palette(&self) -> &Palette {
+        if let Some(ref name) = self.display_color.custom_palette_name {
+            if let Some(idx) = self
+                .user_palette_defs
+                .iter()
+                .position(|d| d.name == *name)
+            {
+                return &self.user_palette_cache[idx];
+            }
+        }
         &self.palettes[self.display_color.palette_index]
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn rebuild_user_palette_cache(&mut self) {
+        self.user_palette_cache = self
+            .user_palette_defs
+            .iter()
+            .map(Palette::from_definition)
+            .collect();
     }
 
     pub(crate) fn color_params(&self) -> ColorParams {
@@ -474,6 +537,15 @@ impl MandelbRustApp {
             DisplayStartFrom::None => RenderStartFrom::None,
             DisplayStartFrom::Black => RenderStartFrom::Black,
             DisplayStartFrom::White => RenderStartFrom::White,
+        };
+        let coloring_mode = match self.display_color.coloring_mode {
+            DisplayColoringMode::Standard => RenderColoringMode::Standard,
+            DisplayColoringMode::Histogram => RenderColoringMode::Histogram,
+            DisplayColoringMode::DistanceEstimation => RenderColoringMode::DistanceEstimation,
+        };
+        let interior_mode = match self.display_color.interior_mode {
+            DisplayInteriorMode::Black => RenderInteriorMode::Black,
+            DisplayInteriorMode::StripeAverage => RenderInteriorMode::StripeAverage,
         };
         ColorParams {
             smooth: self.display_color.smooth_coloring,
@@ -483,6 +555,8 @@ impl MandelbRustApp {
             start_from,
             low_threshold_start: self.display_color.low_threshold_start,
             low_threshold_end: self.display_color.low_threshold_end,
+            coloring_mode,
+            interior_mode,
         }
     }
 
@@ -492,11 +566,18 @@ impl MandelbRustApp {
         aa: Option<&AaSamples>,
     ) -> mandelbrust_render::RenderBuffer {
         let params = self.color_params();
-        if let Some(aa) = aa {
-            self.current_palette().colorize_aa(iter_buf, aa, &params)
-        } else {
-            self.current_palette().colorize(iter_buf, &params)
-        }
+        self.current_palette().colorize_advanced(
+            iter_buf,
+            self.current_extras.as_ref(),
+            aa,
+            &params,
+        )
+    }
+
+    /// Whether the current coloring mode requires extras (re-render needed).
+    pub(crate) fn needs_extras(&self) -> bool {
+        self.display_color.coloring_mode == DisplayColoringMode::DistanceEstimation
+            || self.display_color.interior_mode == DisplayInteriorMode::StripeAverage
     }
 
     pub(crate) fn recolorize(&mut self, ctx: &egui::Context) {
@@ -509,6 +590,7 @@ impl MandelbRustApp {
             self.texture =
                 Some(ctx.load_texture("fractal", image, egui::TextureOptions::LINEAR));
             self.draw_offset = egui::Vec2::ZERO;
+            self.update_resume_preview(ctx, &buffer.pixels, buffer.width, buffer.height);
         }
     }
 
@@ -845,12 +927,14 @@ pub(crate) fn run() -> eframe::Result {
         )
         .init();
 
-    info!("Starting MandelbRust");
+    const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+    let title = format!("MandelbRust - Alpha {APP_VERSION}");
+    info!("Starting {title}");
 
     let prefs = AppPreferences::load();
 
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title("MandelbRust")
+        .with_title(&title)
         .with_inner_size([prefs.window_width, prefs.window_height]);
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(Arc::new(icon));
@@ -862,7 +946,7 @@ pub(crate) fn run() -> eframe::Result {
     };
 
     eframe::run_native(
-        "MandelbRust",
+        &title,
         options,
         Box::new(move |cc| {
             egui_material_icons::initialize(&cc.egui_ctx);

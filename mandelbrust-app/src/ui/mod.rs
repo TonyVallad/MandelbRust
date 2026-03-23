@@ -1,5 +1,6 @@
 pub(crate) mod bookmark_browser;
 pub(crate) mod bookmarks;
+pub(crate) mod color_picker;
 pub(crate) mod export;
 pub(crate) mod help;
 pub(crate) mod hud;
@@ -7,5 +8,6 @@ pub(crate) mod julia_explorer;
 pub(crate) mod main_menu;
 pub(crate) mod menu_bar;
 pub(crate) mod minimap;
+pub(crate) mod palette_editor;
 pub(crate) mod settings;
 pub(crate) mod toolbar;

@@ -7,7 +7,7 @@ use tracing::debug;
 use mandelbrust_core::{
     Complex, ComplexDD, FractalParams, Julia, JuliaDD, Mandelbrot, MandelbrotDD, Viewport,
 };
-use mandelbrust_render::{compute_aa, render, RenderCancel, RenderResult};
+use mandelbrust_render::{compute_aa, render, RenderCancel, RenderOptions, RenderResult};
 
 use crate::app::{FractalMode, MandelbRustApp, DD_THRESHOLD_SCALE, PREVIEW_DOWNSCALE};
 
@@ -41,6 +41,8 @@ pub(crate) struct RenderRequest {
     pub(crate) mode: FractalMode,
     pub(crate) julia_c: Complex,
     pub(crate) aa_level: u32,
+    pub(crate) compute_extras: bool,
+    pub(crate) stripe_density: f64,
 }
 
 pub(crate) enum RenderResponse {
@@ -89,6 +91,8 @@ impl MandelbRustApp {
             mode: self.mode,
             julia_c: self.julia_c,
             aa_level: self.aa_level,
+            compute_extras: self.needs_extras(),
+            stripe_density: self.display_color.stripe_density,
         };
 
         let _ = self.tx_request.send(req);
@@ -114,6 +118,8 @@ impl MandelbRustApp {
             mode: self.mode,
             julia_c: self.julia_c,
             aa_level: 0,
+            compute_extras: false,
+            stripe_density: self.display_color.stripe_density,
         };
 
         let _ = self.tx_request.send(req);
@@ -157,14 +163,18 @@ impl MandelbRustApp {
         self.tiles_mirrored = result.tiles_mirrored;
         self.tiles_border_traced = result.tiles_border_traced;
 
-        let buffer = self.colorize_current(&result.iterations, result.aa_samples.as_ref());
+        // Store extras and AA BEFORE colorization so colorize_current
+        // sees the data that belongs to *this* result, not stale state.
+        self.current_extras = result.extras;
+        self.current_aa = result.aa_samples;
+
+        let buffer = self.colorize_current(&result.iterations, self.current_aa.as_ref());
         let image = egui::ColorImage::from_rgba_unmultiplied(
             [buffer.width as usize, buffer.height as usize],
             &buffer.pixels,
         );
         self.texture = Some(ctx.load_texture("fractal", image, egui::TextureOptions::LINEAR));
         self.current_iterations = Some(result.iterations);
-        self.current_aa = result.aa_samples;
 
         if is_final {
             self.update_resume_preview(ctx, &buffer.pixels, buffer.width, buffer.height);
@@ -263,9 +273,9 @@ fn do_render<F: mandelbrust_core::Fractal + Sync>(
     viewport: &Viewport,
     cancel: &Arc<RenderCancel>,
     aa_level: u32,
-    use_real_axis_symmetry: bool,
+    opts: &RenderOptions,
 ) -> RenderResult {
-    let mut result = render(fractal, viewport, cancel, use_real_axis_symmetry);
+    let mut result = render(fractal, viewport, cancel, opts);
     if aa_level > 0 && !result.cancelled {
         let aa_start = std::time::Instant::now();
         result.aa_samples = compute_aa(fractal, viewport, &result.iterations, aa_level, cancel);
@@ -281,29 +291,42 @@ pub(crate) fn render_for_mode(
     viewport: &Viewport,
     cancel: &Arc<RenderCancel>,
     aa_level: u32,
+    compute_extras: bool,
+    stripe_density: f64,
 ) -> RenderResult {
     let use_symmetry = mode == FractalMode::Mandelbrot;
     let use_dd = viewport.scale < DD_THRESHOLD_SCALE;
+    let opts = RenderOptions {
+        use_real_axis_symmetry: use_symmetry,
+        compute_extras,
+        stripe_density,
+    };
     match (mode, use_dd) {
         (FractalMode::Mandelbrot, false) => {
-            do_render(&Mandelbrot::new(params), viewport, cancel, aa_level, use_symmetry)
+            do_render(&Mandelbrot::new(params), viewport, cancel, aa_level, &opts)
         }
         (FractalMode::Mandelbrot, true) => do_render(
             &MandelbrotDD::new(params, viewport.center_dd),
             viewport,
             cancel,
             aa_level,
-            use_symmetry,
+            &opts,
         ),
         (FractalMode::Julia, false) => {
-            do_render(&Julia::new(julia_c, params), viewport, cancel, aa_level, false)
+            do_render(&Julia::new(julia_c, params), viewport, cancel, aa_level, &RenderOptions {
+                use_real_axis_symmetry: false,
+                ..opts
+            })
         }
         (FractalMode::Julia, true) => do_render(
             &JuliaDD::new(ComplexDD::from(julia_c), params, viewport.center_dd),
             viewport,
             cancel,
             aa_level,
-            false,
+            &RenderOptions {
+                use_real_axis_symmetry: false,
+                ..opts
+            },
         ),
     }
 }
@@ -320,7 +343,7 @@ pub(crate) fn render_worker(
         loop {
             let preview_vp = req.viewport.downscaled(PREVIEW_DOWNSCALE);
             let preview =
-                render_for_mode(req.mode, req.params, req.julia_c, &preview_vp, &cancel, 0);
+                render_for_mode(req.mode, req.params, req.julia_c, &preview_vp, &cancel, 0, false, req.stripe_density);
 
             if preview.cancelled {
                 break;
@@ -349,6 +372,8 @@ pub(crate) fn render_worker(
                 &req.viewport,
                 &cancel,
                 req.aa_level,
+                req.compute_extras,
+                req.stripe_density,
             );
 
             if full.cancelled {
@@ -402,7 +427,11 @@ pub(crate) fn julia_grid_worker(
                 let c_im = req.center_im - i_off as f64 * cell_width_im;
                 let c = Complex::new(c_re, c_im);
                 let julia = Julia::new(c, params);
-                let result = do_render(&julia, &viewport, &req.cancel, req.aa_level, false);
+                let opts = RenderOptions {
+                    use_real_axis_symmetry: false,
+                    ..Default::default()
+                };
+                let result = do_render(&julia, &viewport, &req.cancel, req.aa_level, &opts);
                 if tx.send((i, j, result)).is_err() {
                     return;
                 }

@@ -17,6 +17,28 @@ pub enum IterationResult {
     Interior,
 }
 
+/// Extra per-pixel data computed alongside the main iteration when advanced
+/// coloring modes are active. Stored in a separate buffer to keep
+/// `IterationResult` compact.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IterationExtras {
+    /// Distance estimate from the set boundary: `|z|·ln|z| / |dz|`.
+    /// Zero for interior points.
+    pub distance: f64,
+    /// Stripe average for interior points.
+    /// Zero for escaped points.
+    pub stripe_avg: f64,
+}
+
+impl Default for IterationExtras {
+    fn default() -> Self {
+        Self {
+            distance: 0.0,
+            stripe_avg: 0.0,
+        }
+    }
+}
+
 impl IterationResult {
     /// Integer classification for comparing neighbouring pixels.
     ///
@@ -130,6 +152,23 @@ pub trait Fractal {
     /// For extended-precision fractals (see [`uses_delta_coordinates`](Self::uses_delta_coordinates)),
     /// `point` is the **delta from the stored center** (from [`Viewport::pixel_to_delta`]).
     fn iterate(&self, point: Complex) -> IterationResult;
+
+    /// Iterate a single point, also computing extras (distance estimate and
+    /// stripe average) for advanced coloring modes.
+    ///
+    /// `stripe_density` controls the frequency of the stripe pattern for
+    /// interior coloring.
+    ///
+    /// The default implementation delegates to [`iterate`](Self::iterate) and
+    /// returns zero extras.
+    fn iterate_with_extras(
+        &self,
+        point: Complex,
+        stripe_density: f64,
+    ) -> (IterationResult, IterationExtras) {
+        let _ = stripe_density;
+        (self.iterate(point), IterationExtras::default())
+    }
 
     /// Access the iteration parameters.
     fn params(&self) -> &FractalParams;

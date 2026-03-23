@@ -53,7 +53,7 @@ impl MandelbRustApp {
         const MINIMAP_AA: u32 = 4;
         thread::spawn(move || {
             let cancel = Arc::new(RenderCancel::new());
-            let result = render_for_mode(mode, params, julia_c, &viewport, &cancel, MINIMAP_AA);
+            let result = render_for_mode(mode, params, julia_c, &viewport, &cancel, MINIMAP_AA, false, 1.0);
             let _ = tx.send((result, revision));
         });
         ctx.request_repaint();
@@ -127,6 +127,8 @@ impl MandelbRustApp {
                         &viewport,
                         &cancel,
                         J_PREVIEW_AA,
+                        false,
+                        1.0,
                     );
                     let _ = tx.send((result, revision));
                 });
@@ -161,6 +163,8 @@ impl MandelbRustApp {
                         &viewport,
                         &cancel,
                         J_PREVIEW_AA,
+                        false,
+                        1.0,
                     );
                     let _ = tx.send((result, revision));
                 });

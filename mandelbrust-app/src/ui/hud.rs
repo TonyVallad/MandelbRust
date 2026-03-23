@@ -135,5 +135,12 @@ impl MandelbRustApp {
 
         // -- Top-right toolbar + fractal params --
         self.show_top_right_toolbar(ctx);
+
+        // -- Palette editor popup (separate window) --
+        let editor_resp = self.show_palette_editor_popup(ctx);
+        if editor_resp.needs_recolorize {
+            self.recolorize(ctx);
+            self.julia_explorer_recolorize = true;
+        }
     }
 }

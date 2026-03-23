@@ -16,6 +16,10 @@ This project is the modern successor to [MSZP](https://github.com/TonyVallad/MSZ
 
 **Active development** — the core explorer is fully functional with real-time rendering, deep zoom (double-double precision up to ~10^28x), multiple color palettes, adaptive anti-aliasing, a persistent bookmark system, a main menu at launch, high-resolution image export with metadata, and an optimized release profile. See the [roadmap](docs/roadmap/roadmap.md) for what's coming next.
 
+## Latest Release
+
+- [v0.1.0-alpha](https://github.com/TonyVallad/MandelbRust/releases/tag/v0.1.0-alpha)
+
 ---
 
 ## Features
@@ -73,6 +77,8 @@ Max iterations automatically increase with zoom depth to reveal finer fractal de
 
 Five built-in color palettes — Classic, Fire, Ocean, Neon, Grayscale — stored as 256-entry gradient lookup tables. Switching palettes is instant: the iteration data is cached separately, so re-colorizing doesn't require re-rendering.
 
+In addition, you can create and edit custom palettes in-app (gradient bar palette editor with draggable color stops, plus start/end fade options).
+
 Smooth coloring uses the continuous iteration formula `v = n + 1 - log2(ln|z_n|)` to eliminate banding between iteration levels.
 
 The display/color settings panel provides full control over:
@@ -80,10 +86,14 @@ The display/color settings panel provides full control over:
 - **Start-from** — fade from black or white for the first few iterations (MSZP-inspired)
 - **Smooth coloring** — toggle continuous vs banded coloring
 - **Color profiles** — save and load complete display/color configurations as shareable files
+- **Coloring mode** — Standard, Histogram, Distance Estimation
+- **Interior coloring** — Black, Stripe Average
+
+The panel is organized into tabs for Profiles, Palette, Coloring, and Interior.
 
 ### Adaptive anti-aliasing
 
-Boundary-aware supersampling that targets only edge pixels where the iteration count differs between neighbors. Interior regions are untouched. Choose between 2x2 and 4x4 sampling via the **A** key or the toolbar icon. AA data is preserved during panning so previously smoothed regions stay sharp.
+Boundary-aware supersampling that targets only edge pixels where the iteration count differs between neighbors. Interior regions are untouched. Choose AA level via the **A** key (cycles Off / 2x2 / 4x4) or via the top-right AA icon, which opens a popup to select Off / 2x2 / 4x4. AA data is preserved during panning so previously smoothed regions stay sharp.
 
 ### Minimap
 
@@ -123,7 +133,7 @@ The bookmarks directory is configurable from Settings with a native folder picke
   <img src="docs/img/exported_image_example.png" alt="Exported Mandelbrot fractal image" width="800">
 </p>
 
-Export the current view as a high-resolution PNG at any resolution from HD to 8K and beyond. Press **E** or use **File → Export Image** to open the export dialog, which provides full control over:
+Export the current view as a high-resolution PNG at any resolution from HD to 8K and beyond. Press **E**, use **File → Export Image**, or click the top-right export icon to open the export dialog, which provides full control over:
 
 - **Resolution** — predefined presets (720p through 8K) or custom dimensions
 - **Max iterations** and **anti-aliasing** (Off / 2×2 / 4×4)
@@ -142,7 +152,7 @@ The heads-up display is distributed across the screen corners for minimal intrus
 | Area | Content |
 |------|---------|
 | **Top-left** | Viewport info: mode, center, zoom, iterations, precision, palette, warnings |
-| **Top-right** | Material Symbols icon toolbar with state-aware dimming (navigation, palette, AA, smooth coloring, bookmarks, minimap, help, settings) |
+| **Top-right** | Material Symbols icon toolbar with state-aware dimming (navigation, display/color settings, export image, AA, smooth coloring, bookmarks, minimap, help, settings) |
 | **Top-right** (below toolbar) | Cursor complex coordinates (when crosshair is enabled) |
 | **Bottom-left** | Fractal parameters: mode selector, Julia c inputs, iteration slider with x10/÷10 buttons, escape radius, adaptive iterations toggle |
 | **Bottom-centre** | Render stats: phase, timing, tile counts, AA status |

@@ -1,6 +1,6 @@
 # MandelbRust — Roadmap
 
-**Next development focus: Phase 16 — HUD Modifications.**
+**Next development focus: Phase 17 — HUD Modifications.**
 
 Each phase is a self-contained unit of work that produces a testable, working state.
 
@@ -26,30 +26,29 @@ Each phase is a self-contained unit of work that produces a testable, working st
 
 | Phase | Description |
 |-------|-------------|
-| 16 | HUD Modifications |
-| 17 | Minimap Size Controls |
-| 18 | Deep Zoom: Perturbation Theory |
-| 19 | Deep Zoom: Series Approximation |
-| 20 | Memory Layout & Buffer Management |
-| 21 | Advanced Coloring |
+| 17 | HUD Modifications |
+| 18 | Minimap Size Controls |
+| 19 | Deep Zoom: Perturbation Theory |
+| 20 | Deep Zoom: Series Approximation |
+| 21 | Memory Layout & Buffer Management |
 | 22 | SIMD Vectorization |
 | 23 | Animation & Video Export |
 | 24 | GPU Compute Backend |
 | 25 | Polish & v1.0 Release |
 
-Feature specifications for Phases 16–17: [Features_to_add.md](../Features_to_add.md).
+Feature specifications for Phases 17–18: [Features_to_add.md](../Features_to_add.md).
 
 Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis.md).
 
 ---
 
-## Phase 16 — HUD Modifications
+## Phase 17 — HUD Modifications
 
 **Objective:** Rework the top-left and bottom-left HUD panels for clearer display, editable fields, and a simplified iterations/escape-radius block.
 
 **Reference:** [Features_to_add.md](../Features_to_add.md) §4.
 
-### Task 16.1 — Top-left HUD rework
+### Task 17.1 — Top-left HUD rework
 
 **Files:** `mandelbrust-app/src/ui/hud.rs`
 
@@ -63,7 +62,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 16.2 — Bottom-left HUD rework
+### Task 17.2 — Bottom-left HUD rework
 
 **Files:** `mandelbrust-app/src/ui/params.rs`
 
@@ -76,7 +75,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Deliverables — Phase 16
+### Deliverables — Phase 17
 
 - [ ] Fractal name centred in cyan, no "Mode:" prefix
 - [ ] Coordinates on separate lines, editable
@@ -89,13 +88,13 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-## Phase 17 — Minimap Size Controls
+## Phase 18 — Minimap Size Controls
 
 **Objective:** Allow the user to change minimap size from the UI and keyboard, complementing the existing settings menu option.
 
 **Reference:** [Features_to_add.md](../Features_to_add.md) §2.
 
-### Task 17.1 — Add +/− buttons on the minimap
+### Task 18.1 — Add +/− buttons on the minimap
 
 **Files:** `mandelbrust-app/src/ui/minimap.rs`
 
@@ -107,7 +106,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 17.2 — Page Up / Page Down keyboard shortcuts
+### Task 18.2 — Page Up / Page Down keyboard shortcuts
 
 **Files:** `mandelbrust-app/src/input.rs`
 
@@ -119,7 +118,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Deliverables — Phase 17
+### Deliverables — Phase 18
 
 - [ ] +/− buttons on the minimap
 - [ ] Page Up / Page Down change minimap size
@@ -128,13 +127,13 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-## Phase 18 — Deep Zoom: Perturbation Theory
+## Phase 19 — Deep Zoom: Perturbation Theory
 
 **Objective:** Enable zoom depths of 10^50+ by computing a single arbitrary-precision reference orbit and iterating per-pixel `f64` deltas. This is the transformational change for deep zoom.
 
 **Reference:** [deep-zoom-analysis.md](../deep-zoom-analysis.md), Option 1.
 
-### Task 18.1 — Add arbitrary-precision dependency
+### Task 19.1 — Add arbitrary-precision dependency
 
 **Files:** `mandelbrust-core/Cargo.toml`, new file `mandelbrust-core/src/arb.rs`
 
@@ -149,7 +148,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 18.2 — Compute reference orbit
+### Task 19.2 — Compute reference orbit
 
 **File:** new file `mandelbrust-core/src/perturbation.rs`
 
@@ -165,21 +164,21 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 18.3 — Delta iteration (perturbation per-pixel)
+### Task 19.3 — Delta iteration (perturbation per-pixel)
 
 **File:** `mandelbrust-core/src/perturbation.rs`
 
 1. Implement `fn iterate_perturbed(ref_orbit: &ReferenceOrbit, delta_c: Complex, max_iter: u32, escape_radius_sq: f64) -> IterationResult`.
 2. The delta recurrence: `δ_{n+1} = 2·Z_n·δ_n + δ_n² + δc`, where `Z_n` comes from the reference orbit and `δ_n`, `δc` are `f64`.
 3. Escape check: `|Z_n + δ_n|² > escape_radius²`. Expand using `|Z_n|² + 2·Re(Z_n·conj(δ_n)) + |δ_n|²`.
-4. If the reference orbit escapes before the pixel, handle gracefully (the pixel may still be iterating; this is a "rebasing" scenario — for now, fall back to marking the pixel for a secondary reference orbit in Task 18.4).
+4. If the reference orbit escapes before the pixel, handle gracefully (the pixel may still be iterating; this is a "rebasing" scenario — for now, fall back to marking the pixel for a secondary reference orbit in Task 19.4).
 5. Return `IterationResult::Escaped { iterations, norm_sq }` or `IterationResult::Interior`.
 
 **Verify:** A small test image at zoom 10^20 rendered via perturbation matches a brute-force arbitrary-precision reference (at tiny resolution, e.g. 16×16).
 
 ---
 
-### Task 18.4 — Glitch detection and rebasing
+### Task 19.4 — Glitch detection and rebasing
 
 **File:** `mandelbrust-core/src/perturbation.rs`
 
@@ -193,7 +192,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 18.5 — Integrate perturbation into the render pipeline
+### Task 19.5 — Integrate perturbation into the render pipeline
 
 **Files:** `mandelbrust-render/src/renderer.rs`, `mandelbrust-app/src/render_bridge.rs`
 
@@ -210,7 +209,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Task 18.6 — Adaptive iteration scaling for deep zoom
+### Task 19.6 — Adaptive iteration scaling for deep zoom
 
 **Files:** `mandelbrust-app/src/app.rs` (or relevant input/render module)
 
@@ -222,7 +221,7 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-### Deliverables — Phase 18
+### Deliverables — Phase 19
 
 - [ ] Arbitrary-precision wrapper (`ComplexArb`) in `mandelbrust-core`
 - [ ] Reference orbit computation with cancellation support
@@ -234,13 +233,13 @@ Deep zoom background and analysis: [deep-zoom-analysis.md](../deep-zoom-analysis
 
 ---
 
-## Phase 19 — Deep Zoom: Series Approximation
+## Phase 20 — Deep Zoom: Series Approximation
 
 **Objective:** Dramatically reduce per-frame cost at extreme zoom depths (10^20+) by skipping early iterations via a polynomial approximation of the perturbation orbit.
 
 **Reference:** [deep-zoom-analysis.md](../deep-zoom-analysis.md), Option 1 (SA section).
 
-### Task 19.1 — Taylor series coefficient computation
+### Task 20.1 — Taylor series coefficient computation
 
 **File:** `mandelbrust-core/src/perturbation.rs` (extend)
 
@@ -258,7 +257,7 @@ Compute series approximation coefficients alongside the reference orbit:
 
 ---
 
-### Task 19.2 — Iteration skipping in the perturbation loop
+### Task 20.2 — Iteration skipping in the perturbation loop
 
 **File:** `mandelbrust-core/src/perturbation.rs` (extend `iterate_perturbed`)
 
@@ -270,7 +269,7 @@ Compute series approximation coefficients alongside the reference orbit:
 
 ---
 
-### Task 19.3 — Configurable SA order
+### Task 20.3 — Configurable SA order
 
 **File:** `mandelbrust-core/src/perturbation.rs`
 
@@ -282,7 +281,7 @@ Compute series approximation coefficients alongside the reference orbit:
 
 ---
 
-### Deliverables — Phase 19
+### Deliverables — Phase 20
 
 - [ ] SA coefficient computation integrated into reference orbit
 - [ ] Iteration skipping in the perturbation loop
@@ -292,13 +291,13 @@ Compute series approximation coefficients alongside the reference orbit:
 
 ---
 
-## Phase 20 — Memory Layout & Buffer Management
+## Phase 21 — Memory Layout & Buffer Management
 
 **Objective:** Reduce memory footprint and allocation pressure for faster rendering.
 
 **Reference:** [optimization-report.md](../optimization-report.md) section 5.
 
-### Task 20.1 — Compact `IterationResult` to 8 bytes
+### Task 21.1 — Compact `IterationResult` to 8 bytes
 
 **File:** `mandelbrust-core/src/fractal.rs`, `mandelbrust-render/src/iteration_buffer.rs`, `mandelbrust-render/src/palette.rs`, `mandelbrust-render/src/aa.rs`
 
@@ -319,7 +318,7 @@ Update all code that pattern-matches on the old enum to use the new struct metho
 
 ---
 
-### Task 20.2 — Buffer pool for tile rendering
+### Task 21.2 — Buffer pool for tile rendering
 
 **Files:** `mandelbrust-render/src/renderer.rs`
 
@@ -329,7 +328,7 @@ Add a tile buffer pool using Rayon's `thread_local!` pattern to give each thread
 
 ---
 
-### Task 20.3 — Avoid full buffer rebuild on `shift()`
+### Task 21.3 — Avoid full buffer rebuild on `shift()`
 
 **Files:** `mandelbrust-render/src/iteration_buffer.rs`, `mandelbrust-render/src/aa.rs`
 
@@ -339,57 +338,12 @@ Shift `IterationBuffer` and `AaSamples` in-place instead of allocating new buffe
 
 ---
 
-### Deliverables — Phase 20
+### Deliverables — Phase 21
 
 - [ ] `IterationResult` is 8 bytes (down from 16)
 - [ ] Tile buffers are pooled and reused
 - [ ] `shift()` does not allocate a new buffer
 - [ ] Benchmark results logged
-
----
-
-## Phase 21 — Advanced Coloring
-
-**Objective:** Add coloring techniques that dramatically improve visual quality.
-
-**Reference:** [optimization-report.md](../optimization-report.md) section 7.
-
-### Task 21.1 — Histogram equalization coloring
-
-**File:** `mandelbrust-render/src/palette.rs`
-
-Add `colorize_histogram()`: build iteration histogram → CDF → map pixels through CDF for even color distribution. Toggle in UI (instant re-colorize, no re-render).
-
-**Verify:** Histogram coloring produces visibly more even distribution than linear.
-
----
-
-### Task 21.2 — Distance estimation
-
-**Files:** `mandelbrust-core/src/mandelbrot.rs`, `mandelbrust-core/src/julia.rs`, `mandelbrust-render/src/palette.rs`
-
-Track derivative `dz` alongside iteration, compute `d = |z|·ln|z| / |dz|`, add a "Distance estimation" coloring mode.
-
-**Verify:** Filament structures near the set boundary are visibly sharper.
-
----
-
-### Task 21.3 — Stripe average coloring for interior points
-
-**Files:** `mandelbrust-core/src/mandelbrot.rs`, `mandelbrust-core/src/julia.rs`, `mandelbrust-render/src/palette.rs`
-
-Accumulate angular stripe average during iteration, add a coloring mode for interior points. Default: off (black interior).
-
-**Verify:** Interior regions show smooth, colorful orbital structure.
-
----
-
-### Deliverables — Phase 21
-
-- [ ] Histogram equalization toggle
-- [ ] Distance estimation coloring mode
-- [ ] Interior stripe average coloring mode
-- [ ] All modes accessible from UI and compatible with `DisplayColorSettings`
 
 ---
 
@@ -520,7 +474,7 @@ Add "Renderer: CPU / GPU" toggle in settings. GPU writes directly to texture. Gr
 
 ### Task 24.4 — GPU perturbation (deep zoom on GPU)
 
-Upload the reference orbit (from Phase 18) as a GPU storage buffer. Each GPU thread iterates deltas for one pixel. Emulated f64 in WGSL if needed, or Vulkan `shaderFloat64` on supported hardware.
+Upload the reference orbit (from Phase 19) as a GPU storage buffer. Each GPU thread iterates deltas for one pixel. Emulated f64 in WGSL if needed, or Vulkan `shaderFloat64` on supported hardware.
 
 **Verify:** GPU perturbation at zoom 10^25 matches CPU perturbation output. Render time is significantly faster.
 
@@ -586,7 +540,6 @@ Not scheduled but tracked as future possibilities:
 - **Additional fractal types** — Multibrot, Burning Ship, Newton, Tricorn
 - **Buddhabrot / Nebulabrot** rendering mode
 - **Orbit trap coloring** (Pickover stalks, circles, crosses)
-- **Palette editor** — custom gradient creation
 - **Fade to black** — MSZP-style fade near max iterations
 - **WebAssembly build** — run MandelbRust in the browser
 - **Plugin system** — user-defined fractal formulas

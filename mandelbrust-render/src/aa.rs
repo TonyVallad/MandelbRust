@@ -241,22 +241,27 @@ mod tests {
     use super::*;
     use mandelbrust_core::{Mandelbrot, Viewport};
 
+    fn opts() -> crate::RenderOptions {
+        crate::RenderOptions {
+            use_real_axis_symmetry: true,
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn detect_boundaries_finds_edges() {
         let mandelbrot = Mandelbrot::default();
         let viewport = Viewport::default_mandelbrot(64, 64);
         let cancel = Arc::new(RenderCancel::new());
 
-        let result = crate::render(&mandelbrot, &viewport, &cancel, true);
+        let result = crate::render(&mandelbrot, &viewport, &cancel, &opts());
         let mask = detect_boundaries(&result.iterations);
 
-        // There should be some boundary pixels (the set boundary is non-trivial).
         let boundary_count = mask.iter().filter(|&&b| b).count();
         assert!(
             boundary_count > 0,
             "should detect boundary pixels in a Mandelbrot render"
         );
-        // Not all pixels should be boundaries.
         assert!(
             boundary_count < 64 * 64,
             "not every pixel should be a boundary"
@@ -269,24 +274,23 @@ mod tests {
         let viewport = Viewport::default_mandelbrot(64, 64);
         let cancel = Arc::new(RenderCancel::new());
 
-        let result = crate::render(&mandelbrot, &viewport, &cancel, true);
+        let result = crate::render(&mandelbrot, &viewport, &cancel, &opts());
         let aa = compute_aa(&mandelbrot, &viewport, &result.iterations, 2, &cancel);
 
         let aa = aa.expect("should produce AA samples");
         assert_eq!(aa.aa_level, 2);
         assert!(aa.boundary_count > 0);
-        assert_eq!(aa.data.len(), aa.boundary_count * 4); // 2×2 = 4 samples each
+        assert_eq!(aa.data.len(), aa.boundary_count * 4);
     }
 
     #[test]
     fn uniform_image_has_no_boundaries() {
-        // Far outside the set — all pixels escape at the same iteration.
         let mandelbrot = Mandelbrot::default();
         let viewport =
             Viewport::new(mandelbrust_core::Complex::new(10.0, 10.0), 0.001, 64, 64).unwrap();
         let cancel = Arc::new(RenderCancel::new());
 
-        let result = crate::render(&mandelbrot, &viewport, &cancel, true);
+        let result = crate::render(&mandelbrot, &viewport, &cancel, &opts());
         let aa = compute_aa(&mandelbrot, &viewport, &result.iterations, 2, &cancel);
 
         assert!(aa.is_none(), "uniform image should have no boundary pixels");

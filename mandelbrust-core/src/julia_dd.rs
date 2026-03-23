@@ -1,7 +1,7 @@
 use crate::complex::Complex;
 use crate::complex_dd::ComplexDD;
 use crate::double_double::DoubleDouble;
-use crate::fractal::{Fractal, FractalParams, IterationResult};
+use crate::fractal::{Fractal, FractalParams, IterationExtras, IterationResult};
 
 /// Double-double precision Julia set: `z_{n+1} = z_n² + c`,
 /// where `c` is a fixed constant and `z₀` is the point.
@@ -71,6 +71,99 @@ impl Fractal for JuliaDD {
         }
 
         IterationResult::Interior
+    }
+
+    fn iterate_with_extras(
+        &self,
+        delta: Complex,
+        stripe_density: f64,
+    ) -> (IterationResult, IterationExtras) {
+        let escape_radius_sq = DoubleDouble::from(self.params.escape_radius_sq());
+        let max_iter = self.params.max_iterations;
+
+        let mut z = self.center + ComplexDD::from(delta);
+        // f64-precision derivative (sufficient for coloring)
+        let mut dz = Complex::new(1.0, 0.0);
+        let mut stripe_sum = 0.0f64;
+
+        let mut old_z = z;
+        let mut period: u32 = 0;
+        let mut check: u32 = 3;
+
+        for n in 0..max_iter {
+            let z_f64 = z.to_complex();
+            dz = Complex::new(
+                2.0 * (z_f64.re * dz.re - z_f64.im * dz.im),
+                2.0 * (z_f64.re * dz.im + z_f64.im * dz.re),
+            );
+
+            z = ComplexDD::new(
+                z.re * z.re - z.im * z.im + self.c.re,
+                DoubleDouble::from(2.0) * z.re * z.im + self.c.im,
+            );
+
+            let norm_sq = z.norm_sq();
+            let z_f64_new = z.to_complex();
+            stripe_sum += 0.5 * (stripe_density * z_f64_new.im.atan2(z_f64_new.re)).sin() + 0.5;
+
+            if norm_sq > escape_radius_sq {
+                let z_norm = norm_sq.to_f64().sqrt();
+                let dz_norm = dz.norm_sq().sqrt();
+                let distance = if dz_norm > 0.0 {
+                    z_norm * z_norm.ln() / dz_norm
+                } else {
+                    0.0
+                };
+                return (
+                    IterationResult::Escaped {
+                        iterations: n,
+                        norm_sq: norm_sq.to_f64(),
+                    },
+                    IterationExtras {
+                        distance,
+                        stripe_avg: 0.0,
+                    },
+                );
+            }
+
+            if n >= 32 && n & 3 == 0 {
+                let dre = (z.re - old_z.re).abs();
+                let dim = (z.im - old_z.im).abs();
+                if dre.hi < DD_PERIOD_TOLERANCE && dim.hi < DD_PERIOD_TOLERANCE {
+                    let stripe_avg = if n > 0 {
+                        stripe_sum / n as f64
+                    } else {
+                        0.0
+                    };
+                    return (
+                        IterationResult::Interior,
+                        IterationExtras {
+                            distance: 0.0,
+                            stripe_avg,
+                        },
+                    );
+                }
+                period += 1;
+                if period > check {
+                    old_z = z;
+                    period = 0;
+                    check = check.saturating_mul(2);
+                }
+            }
+        }
+
+        let stripe_avg = if max_iter > 0 {
+            stripe_sum / max_iter as f64
+        } else {
+            0.0
+        };
+        (
+            IterationResult::Interior,
+            IterationExtras {
+                distance: 0.0,
+                stripe_avg,
+            },
+        )
     }
 
     fn params(&self) -> &FractalParams {

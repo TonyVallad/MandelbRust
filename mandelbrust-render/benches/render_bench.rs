@@ -3,7 +3,14 @@ use std::sync::Arc;
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use mandelbrust_core::{Complex, FractalParams, Mandelbrot, Viewport};
-use mandelbrust_render::{render, Palette, RenderCancel};
+use mandelbrust_render::{render, ColorParams, Palette, RenderCancel, RenderOptions};
+
+fn opts() -> RenderOptions {
+    RenderOptions {
+        use_real_axis_symmetry: true,
+        ..Default::default()
+    }
+}
 
 fn bench_full_frame_render(c: &mut Criterion) {
     let mandelbrot = Mandelbrot::default();
@@ -11,7 +18,7 @@ fn bench_full_frame_render(c: &mut Criterion) {
     let cancel = Arc::new(RenderCancel::new());
 
     c.bench_function("full_frame_640x480", |b| {
-        b.iter(|| render(&mandelbrot, &viewport, &cancel, true));
+        b.iter(|| render(&mandelbrot, &viewport, &cancel, &opts()));
     });
 }
 
@@ -22,7 +29,7 @@ fn bench_iteration_throughput(c: &mut Criterion) {
     let cancel = Arc::new(RenderCancel::new());
 
     c.bench_function("render_256x256_1000iter", |b| {
-        b.iter(|| render(&mandelbrot, &viewport, &cancel, true));
+        b.iter(|| render(&mandelbrot, &viewport, &cancel, &opts()));
     });
 }
 
@@ -30,11 +37,12 @@ fn bench_colorize(c: &mut Criterion) {
     let mandelbrot = Mandelbrot::default();
     let viewport = Viewport::default_mandelbrot(640, 480);
     let cancel = Arc::new(RenderCancel::new());
-    let result = render(&mandelbrot, &viewport, &cancel, true);
+    let result = render(&mandelbrot, &viewport, &cancel, &opts());
     let palette = Palette::default();
+    let params = ColorParams::from_smooth(true);
 
     c.bench_function("colorize_640x480", |b| {
-        b.iter(|| palette.colorize(&result.iterations, true));
+        b.iter(|| palette.colorize(&result.iterations, &params));
     });
 }
 

@@ -1,5 +1,5 @@
 use crate::complex::Complex;
-use crate::fractal::{Fractal, FractalParams, IterationResult};
+use crate::fractal::{Fractal, FractalParams, IterationExtras, IterationResult};
 
 /// The Mandelbrot set: `z_{n+1} = z_n² + c`, starting from `z₀ = 0`.
 ///
@@ -85,6 +85,100 @@ impl Fractal for Mandelbrot {
         }
 
         IterationResult::Interior
+    }
+
+    fn iterate_with_extras(
+        &self,
+        c: Complex,
+        stripe_density: f64,
+    ) -> (IterationResult, IterationExtras) {
+        if in_cardioid(c.re, c.im) || in_period2_bulb(c.re, c.im) {
+            return (IterationResult::Interior, IterationExtras::default());
+        }
+
+        let escape_radius_sq = self.params.escape_radius_sq();
+        let max_iter = self.params.max_iterations;
+
+        let mut z = Complex::ZERO;
+        let mut dz = Complex::ZERO;
+        let mut stripe_sum = 0.0f64;
+
+        let mut old_z = z;
+        let mut period: u32 = 0;
+        let mut check: u32 = 3;
+
+        for n in 0..max_iter {
+            // Derivative: dz = 2·z·dz + 1  (d(z_n)/dc for Mandelbrot)
+            dz = Complex::new(
+                2.0 * (z.re * dz.re - z.im * dz.im) + 1.0,
+                2.0 * (z.re * dz.im + z.im * dz.re),
+            );
+
+            z = Complex::new(
+                z.re * z.re - z.im * z.im + c.re,
+                2.0 * z.re * z.im + c.im,
+            );
+
+            let norm_sq = z.norm_sq();
+
+            stripe_sum += 0.5 * (stripe_density * z.im.atan2(z.re)).sin() + 0.5;
+
+            if norm_sq > escape_radius_sq {
+                let z_norm = norm_sq.sqrt();
+                let dz_norm = dz.norm_sq().sqrt();
+                let distance = if dz_norm > 0.0 {
+                    z_norm * z_norm.ln() / dz_norm
+                } else {
+                    0.0
+                };
+                return (
+                    IterationResult::Escaped {
+                        iterations: n,
+                        norm_sq,
+                    },
+                    IterationExtras {
+                        distance,
+                        stripe_avg: 0.0,
+                    },
+                );
+            }
+
+            if n >= 32 && n & 3 == 0 {
+                if (z.re - old_z.re).abs() < 1e-13 && (z.im - old_z.im).abs() < 1e-13 {
+                    let stripe_avg = if n > 0 {
+                        stripe_sum / n as f64
+                    } else {
+                        0.0
+                    };
+                    return (
+                        IterationResult::Interior,
+                        IterationExtras {
+                            distance: 0.0,
+                            stripe_avg,
+                        },
+                    );
+                }
+                period += 1;
+                if period > check {
+                    old_z = z;
+                    period = 0;
+                    check = check.saturating_mul(2);
+                }
+            }
+        }
+
+        let stripe_avg = if max_iter > 0 {
+            stripe_sum / max_iter as f64
+        } else {
+            0.0
+        };
+        (
+            IterationResult::Interior,
+            IterationExtras {
+                distance: 0.0,
+                stripe_avg,
+            },
+        )
     }
 
     fn params(&self) -> &FractalParams {
