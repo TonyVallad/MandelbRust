@@ -435,8 +435,10 @@ impl Palette {
                 }
             }
             ColoringMode::Standard => {
-                if params.interior_mode != InteriorMode::Black && extras.is_some() {
-                    self.colorize_with_interior(iter_buf, extras.unwrap(), aa, params)
+                if params.interior_mode != InteriorMode::Black {
+                    if let Some(ext) = extras {
+                        return self.colorize_with_interior(iter_buf, ext, aa, params);
+                    }
                 } else if let Some(aa) = aa {
                     self.colorize_aa(iter_buf, aa, params)
                 } else {
