@@ -197,8 +197,7 @@ impl MandelbRustApp {
 
     pub(crate) fn cancel_render(&mut self) {
         self.cancel.cancel();
-        if self.render_phase == RenderPhase::Rendering
-            || self.render_phase == RenderPhase::Refining
+        if self.render_phase == RenderPhase::Rendering || self.render_phase == RenderPhase::Refining
         {
             self.render_phase = RenderPhase::Done;
             tracing::info!("Render cancelled by user");
@@ -213,7 +212,9 @@ impl MandelbRustApp {
             self.julia_explorer_cells
                 .insert((i, j), result.iterations.clone());
             let mut params = self.color_params();
-            params.cycle_length = self.display_color.cycle_length(result.iterations.max_iterations);
+            params.cycle_length = self
+                .display_color
+                .cycle_length(result.iterations.max_iterations);
             let buffer = if let Some(aa) = result.aa_samples.as_ref() {
                 self.current_palette()
                     .colorize_aa(&result.iterations, aa, &params)
@@ -312,12 +313,16 @@ pub(crate) fn render_for_mode(
             aa_level,
             &opts,
         ),
-        (FractalMode::Julia, false) => {
-            do_render(&Julia::new(julia_c, params), viewport, cancel, aa_level, &RenderOptions {
+        (FractalMode::Julia, false) => do_render(
+            &Julia::new(julia_c, params),
+            viewport,
+            cancel,
+            aa_level,
+            &RenderOptions {
                 use_real_axis_symmetry: false,
                 ..opts
-            })
-        }
+            },
+        ),
         (FractalMode::Julia, true) => do_render(
             &JuliaDD::new(ComplexDD::from(julia_c), params, viewport.center_dd),
             viewport,
@@ -342,8 +347,16 @@ pub(crate) fn render_worker(
 
         loop {
             let preview_vp = req.viewport.downscaled(PREVIEW_DOWNSCALE);
-            let preview =
-                render_for_mode(req.mode, req.params, req.julia_c, &preview_vp, &cancel, 0, false, req.stripe_density);
+            let preview = render_for_mode(
+                req.mode,
+                req.params,
+                req.julia_c,
+                &preview_vp,
+                &cancel,
+                0,
+                false,
+                req.stripe_density,
+            );
 
             if preview.cancelled {
                 break;
@@ -404,10 +417,11 @@ pub(crate) fn julia_grid_worker(
         let gen = req.cancel.generation();
         let params = FractalParams::new(req.max_iterations, 2.0).unwrap_or_default();
         let scale = 3.0 / req.cell_size as f64;
-        let viewport = match Viewport::new(Complex::new(0.0, 0.0), scale, req.cell_size, req.cell_size) {
-            Ok(vp) => vp,
-            Err(_) => continue,
-        };
+        let viewport =
+            match Viewport::new(Complex::new(0.0, 0.0), scale, req.cell_size, req.cell_size) {
+                Ok(vp) => vp,
+                Err(_) => continue,
+            };
         let center_j = (req.cols - 1) / 2;
         let center_i = (req.rows - 1) / 2;
         let cell_width_re = 2.0 * req.extent_half / req.cols as f64;

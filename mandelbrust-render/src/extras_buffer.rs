@@ -69,10 +69,12 @@ impl ExtrasBuffer {
             }
             let dst_row = dst_y * self.width as usize;
             let src_row = src_y as usize * self.width as usize;
-            new_dist[dst_row + x_start..dst_row + x_start + count]
-                .copy_from_slice(&self.distance[src_row + src_x_start..src_row + src_x_start + count]);
-            new_stripe[dst_row + x_start..dst_row + x_start + count]
-                .copy_from_slice(&self.stripe_avg[src_row + src_x_start..src_row + src_x_start + count]);
+            new_dist[dst_row + x_start..dst_row + x_start + count].copy_from_slice(
+                &self.distance[src_row + src_x_start..src_row + src_x_start + count],
+            );
+            new_stripe[dst_row + x_start..dst_row + x_start + count].copy_from_slice(
+                &self.stripe_avg[src_row + src_x_start..src_row + src_x_start + count],
+            );
         }
 
         self.distance = new_dist;

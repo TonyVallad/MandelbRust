@@ -81,8 +81,7 @@ impl MandelbRustApp {
         const CENTER_IM: f64 = 0.0;
         let extent_half = self.julia_explorer_extent_half;
 
-        ui.style_mut().visuals.override_text_color =
-            Some(egui::Color32::from_rgb(220, 220, 220));
+        ui.style_mut().visuals.override_text_color = Some(egui::Color32::from_rgb(220, 220, 220));
 
         ui.horizontal(|ui| {
             ui.label("Square size (px):");
@@ -158,15 +157,13 @@ impl MandelbRustApp {
                         ),
                         egui::vec2(cell_size_px, cell_size_px),
                     );
-                    let inner = ui.scope_builder(
-                        egui::UiBuilder::new().max_rect(cell_rect),
-                        |ui| {
+                    let inner =
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(cell_rect), |ui| {
                             ui.allocate_exact_size(
                                 egui::vec2(cell_size_px, cell_size_px),
                                 egui::Sense::click(),
                             )
-                        },
-                    );
+                        });
                     let resp = inner.inner.1;
                     if resp.clicked() {
                         self.julia_explorer_picked_c = Some((c_re, c_im));
@@ -174,12 +171,9 @@ impl MandelbRustApp {
                     resp.on_hover_text(format!("C = {:.6} {:+.6}i", c_re, c_im));
                     let rect = inner.response.rect;
                     if let Some(tex) = self.julia_explorer_textures.get(&(i, j)) {
-                        let uv = egui::Rect::from_min_max(
-                            egui::pos2(0.0, 0.0),
-                            egui::pos2(1.0, 1.0),
-                        );
-                        ui.painter()
-                            .image(tex.id(), rect, uv, egui::Color32::WHITE);
+                        let uv =
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                        ui.painter().image(tex.id(), rect, uv, egui::Color32::WHITE);
                     } else {
                         ui.painter()
                             .rect_filled(rect, 0.0, egui::Color32::from_gray(50));

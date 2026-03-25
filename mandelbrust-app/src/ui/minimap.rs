@@ -53,7 +53,9 @@ impl MandelbRustApp {
         const MINIMAP_AA: u32 = 4;
         thread::spawn(move || {
             let cancel = Arc::new(RenderCancel::new());
-            let result = render_for_mode(mode, params, julia_c, &viewport, &cancel, MINIMAP_AA, false, 1.0);
+            let result = render_for_mode(
+                mode, params, julia_c, &viewport, &cancel, MINIMAP_AA, false, 1.0,
+            );
             let _ = tx.send((result, revision));
         });
         ctx.request_repaint();
@@ -183,7 +185,7 @@ impl MandelbRustApp {
             let should_store = self
                 .j_preview_texture
                 .as_ref()
-                .map_or(true, |(_, r)| revision >= *r);
+                .is_none_or(|(_, r)| revision >= *r);
             if !should_store {
                 continue;
             }
@@ -207,11 +209,9 @@ impl MandelbRustApp {
     pub(crate) fn show_minimap_panel(&mut self, ctx: &egui::Context, hud_alpha: u8) {
         let size = self.preferences.minimap_size.side_pixels() as f32;
         let vp = self.minimap_viewport();
-        let minimap_alpha = (hud_alpha as f32
-            * self.preferences.minimap_opacity.clamp(0.0, 1.0))
-        .round() as u8;
-        let image_alpha =
-            (255.0 * self.preferences.minimap_opacity.clamp(0.0, 1.0)).round() as u8;
+        let minimap_alpha =
+            (hud_alpha as f32 * self.preferences.minimap_opacity.clamp(0.0, 1.0)).round() as u8;
+        let image_alpha = (255.0 * self.preferences.minimap_opacity.clamp(0.0, 1.0)).round() as u8;
 
         const MINIMAP_ANCHOR_MARGIN: f32 = 8.0;
         egui::Area::new(egui::Id::new("hud_minimap"))
@@ -235,8 +235,7 @@ impl MandelbRustApp {
 
                         let to_minimap = |c: Complex| {
                             let px = (c.re - vp.center.re) / vp.scale + (vp.width as f64) * 0.5;
-                            let py = (vp.height as f64) * 0.5
-                                - (c.im - vp.center.im) / vp.scale;
+                            let py = (vp.height as f64) * 0.5 - (c.im - vp.center.im) / vp.scale;
                             let sx = image_rect.min.x
                                 + (px as f32 / vp.width as f32) * image_rect.width();
                             let sy = image_rect.min.y
@@ -284,23 +283,17 @@ impl MandelbRustApp {
                             );
                         }
 
-                        let crosshair_alpha = (self
-                            .preferences
-                            .crosshair_opacity
-                            .clamp(0.0, 1.0)
+                        let crosshair_alpha = (self.preferences.crosshair_opacity.clamp(0.0, 1.0)
                             * 255.0)
                             .round() as u8;
-                        let crosshair_color =
-                            egui::Color32::from_white_alpha(crosshair_alpha);
+                        let crosshair_color = egui::Color32::from_white_alpha(crosshair_alpha);
 
                         let cx = self.viewport.center.re;
                         let cy = self.viewport.center.im;
                         let w = self.viewport.width as f64 * self.viewport.scale;
                         let h = self.viewport.height as f64 * self.viewport.scale;
-                        let (min_x, min_y) =
-                            to_minimap(Complex::new(cx - w * 0.5, cy + h * 0.5));
-                        let (max_x, max_y) =
-                            to_minimap(Complex::new(cx + w * 0.5, cy - h * 0.5));
+                        let (min_x, min_y) = to_minimap(Complex::new(cx - w * 0.5, cy + h * 0.5));
+                        let (max_x, max_y) = to_minimap(Complex::new(cx + w * 0.5, cy - h * 0.5));
                         let min_x = min_x.clamp(image_rect.min.x, image_rect.max.x);
                         let max_x = max_x.clamp(image_rect.min.x, image_rect.max.x);
                         let min_y = min_y.clamp(image_rect.min.y, image_rect.max.y);
@@ -309,8 +302,7 @@ impl MandelbRustApp {
                             egui::pos2(min_x, min_y),
                             egui::pos2(max_x, max_y),
                         );
-                        let stroke =
-                            egui::Stroke::new(1.5, egui::Color32::from_rgb(0, 255, 255));
+                        let stroke = egui::Stroke::new(1.5, egui::Color32::from_rgb(0, 255, 255));
                         ui.painter().rect_stroke(
                             viewport_rect,
                             0.0,
@@ -356,10 +348,8 @@ impl MandelbRustApp {
                             );
                         }
 
-                        let border_stroke = egui::Stroke::new(
-                            1.0,
-                            egui::Color32::from_white_alpha(191),
-                        );
+                        let border_stroke =
+                            egui::Stroke::new(1.0, egui::Color32::from_white_alpha(191));
                         ui.painter().rect_stroke(
                             rect,
                             0.0,

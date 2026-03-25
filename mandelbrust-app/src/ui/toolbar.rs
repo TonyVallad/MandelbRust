@@ -1,8 +1,6 @@
 use eframe::egui;
 
-use crate::app::{
-    ColorSettingsTab, FractalMode, MandelbRustApp, HUD_CORNER_RADIUS, HUD_MARGIN,
-};
+use crate::app::{ColorSettingsTab, FractalMode, MandelbRustApp, HUD_CORNER_RADIUS, HUD_MARGIN};
 use crate::color_profiles;
 use crate::display_color::{
     ColoringMode as DisplayColoringMode, InteriorMode as DisplayInteriorMode,
@@ -15,8 +13,7 @@ impl MandelbRustApp {
     pub(crate) fn show_top_right_toolbar(&mut self, ctx: &egui::Context) {
         use egui_material_icons::icons::*;
 
-        let hud_alpha =
-            (self.preferences.hud_panel_opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let hud_alpha = (self.preferences.hud_panel_opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
         let icon_on = egui::Color32::from_rgb(200, 200, 200);
         let icon_off = egui::Color32::from_rgb(90, 90, 90);
         let mi = |icon: &str| egui::RichText::new(icon).size(18.0).color(icon_on);
@@ -76,7 +73,9 @@ impl MandelbRustApp {
                             {
                                 self.reset_view();
                             }
-                            let pal_name = self.palettes[self.display_color.palette_index].name.as_str();
+                            let pal_name = self.palettes[self.display_color.palette_index]
+                                .name
+                                .as_str();
                             if add_icon_btn(ui, mi(ICON_PALETTE), true)
                                 .on_hover_text(format!("Display/color settings ({pal_name})"))
                                 .clicked()
@@ -102,15 +101,17 @@ impl MandelbRustApp {
                                 .show(|ui| {
                                     ui.set_min_width(60.0);
                                     for (level, label) in [(0u32, "Off"), (2, "2x2"), (4, "4x4")] {
-                                        if ui.selectable_label(self.aa_level == level, label).clicked() {
-                                            if self.aa_level != level {
-                                                self.aa_level = level;
-                                                if level == 0 {
-                                                    self.current_aa = None;
-                                                    palette_changed = true;
-                                                } else {
-                                                    params_changed = true;
-                                                }
+                                        if ui
+                                            .selectable_label(self.aa_level == level, label)
+                                            .clicked()
+                                            && self.aa_level != level
+                                        {
+                                            self.aa_level = level;
+                                            if level == 0 {
+                                                self.current_aa = None;
+                                                palette_changed = true;
+                                            } else {
+                                                params_changed = true;
                                             }
                                         }
                                     }
@@ -125,13 +126,9 @@ impl MandelbRustApp {
                                     self.open_save_new_dialog();
                                 }
                             }
-                            if add_icon_btn(
-                                ui,
-                                mi_state(ICON_BOOKMARKS, self.show_bookmarks),
-                                true,
-                            )
-                            .on_hover_text("Bookmark explorer (B)")
-                            .clicked()
+                            if add_icon_btn(ui, mi_state(ICON_BOOKMARKS, self.show_bookmarks), true)
+                                .on_hover_text("Bookmark explorer (B)")
+                                .clicked()
                             {
                                 self.show_bookmarks = !self.show_bookmarks;
                                 if self.show_bookmarks {
@@ -213,22 +210,36 @@ impl MandelbRustApp {
 
                     egui::ScrollArea::vertical()
                         .max_height(500.0)
-                        .show(ui, |ui| {
-                        match self.color_settings_tab {
+                        .show(ui, |ui| match self.color_settings_tab {
                             ColorSettingsTab::Profiles => {
-                                self.draw_profiles_tab(ui, &mut palette_changed, &mut params_changed);
+                                self.draw_profiles_tab(
+                                    ui,
+                                    &mut palette_changed,
+                                    &mut params_changed,
+                                );
                             }
                             ColorSettingsTab::Palette => {
-                                self.draw_palette_tab(ui, &mut palette_changed, &mut params_changed);
+                                self.draw_palette_tab(
+                                    ui,
+                                    &mut palette_changed,
+                                    &mut params_changed,
+                                );
                             }
                             ColorSettingsTab::ColoringMode => {
-                                self.draw_coloring_tab(ui, &mut palette_changed, &mut params_changed);
+                                self.draw_coloring_tab(
+                                    ui,
+                                    &mut palette_changed,
+                                    &mut params_changed,
+                                );
                             }
                             ColorSettingsTab::Interior => {
-                                self.draw_interior_tab(ui, &mut palette_changed, &mut params_changed);
+                                self.draw_interior_tab(
+                                    ui,
+                                    &mut palette_changed,
+                                    &mut params_changed,
+                                );
                             }
-                        }
-                    });
+                        });
                 });
         }
 
@@ -236,7 +247,10 @@ impl MandelbRustApp {
         if self.show_crosshair {
             if let Some(c) = self.cursor_complex {
                 egui::Area::new(egui::Id::new("hud_cursor"))
-                    .anchor(egui::Align2::RIGHT_TOP, [-TOOLBAR_MARGIN, 38.0 + self.menu_bar_height])
+                    .anchor(
+                        egui::Align2::RIGHT_TOP,
+                        [-TOOLBAR_MARGIN, 38.0 + self.menu_bar_height],
+                    )
                     .show(ctx, |ui| {
                         ui.style_mut().visuals.override_text_color =
                             Some(egui::Color32::from_rgb(220, 220, 220));

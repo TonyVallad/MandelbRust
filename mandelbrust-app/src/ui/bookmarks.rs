@@ -412,8 +412,7 @@ impl MandelbRustApp {
                 ui.horizontal(|ui| {
                     ui.label("Search:");
                     ui.add(
-                        egui::TextEdit::singleline(&mut self.bookmark_search)
-                            .desired_width(160.0),
+                        egui::TextEdit::singleline(&mut self.bookmark_search).desired_width(160.0),
                     );
                     if ui.small_button("A-Z").clicked() {
                         self.bookmark_store.sort_by_name();
@@ -498,8 +497,7 @@ impl MandelbRustApp {
             if self.last_jumped_bookmark_idx == Some(idx) {
                 self.last_jumped_bookmark_idx = None;
             } else if self.last_jumped_bookmark_idx.is_some_and(|last| last > idx) {
-                self.last_jumped_bookmark_idx =
-                    self.last_jumped_bookmark_idx.map(|last| last - 1);
+                self.last_jumped_bookmark_idx = self.last_jumped_bookmark_idx.map(|last| last - 1);
             }
         }
 
@@ -557,12 +555,8 @@ impl MandelbRustApp {
                                 egui::pos2(0.0, 0.0),
                                 egui::pos2(1.0, 1.0),
                             );
-                            ui.painter().image(
-                                tex.id(),
-                                thumb_rect.0,
-                                uv,
-                                egui::Color32::WHITE,
-                            );
+                            ui.painter()
+                                .image(tex.id(), thumb_rect.0, uv, egui::Color32::WHITE);
                         } else {
                             ui.painter().rect_filled(
                                 thumb_rect.0,
@@ -630,10 +624,8 @@ impl MandelbRustApp {
                                             self.editing_bookmark = Some(i);
                                             self.editing_name = name.clone();
                                         }
-                                        let is_fav =
-                                            labels.iter().any(|l| l == "Favorites");
-                                        let star =
-                                            if is_fav { "\u{2605}" } else { "\u{2606}" };
+                                        let is_fav = labels.iter().any(|l| l == "Favorites");
+                                        let star = if is_fav { "\u{2605}" } else { "\u{2606}" };
                                         if ui
                                             .small_button(star)
                                             .on_hover_text(if is_fav {
@@ -654,15 +646,12 @@ impl MandelbRustApp {
                             ui.horizontal_wrapped(|ui| {
                                 ui.spacing_mut().item_spacing = egui::vec2(3.0, 2.0);
                                 for label in labels {
-                                    let short =
-                                        label.split('/').next_back().unwrap_or(label);
+                                    let short = label.split('/').next_back().unwrap_or(label);
                                     ui.label(
                                         egui::RichText::new(short)
                                             .size(9.0)
                                             .color(egui::Color32::from_rgb(140, 180, 220))
-                                            .background_color(
-                                                egui::Color32::from_black_alpha(80),
-                                            ),
+                                            .background_color(egui::Color32::from_black_alpha(80)),
                                     );
                                 }
                             });
@@ -674,10 +663,7 @@ impl MandelbRustApp {
                         ui.painter().rect_stroke(
                             card_rect,
                             4.0,
-                            egui::Stroke::new(
-                                2.0,
-                                egui::Color32::from_rgb(80, 200, 255),
-                            ),
+                            egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 200, 255)),
                             egui::StrokeKind::Outside,
                         );
                     }
@@ -689,11 +675,7 @@ impl MandelbRustApp {
             });
     }
 
-    pub(crate) fn draw_label_tree_node(
-        &mut self,
-        ui: &mut egui::Ui,
-        node: &bookmarks::LabelNode,
-    ) {
+    pub(crate) fn draw_label_tree_node(&mut self, ui: &mut egui::Ui, node: &bookmarks::LabelNode) {
         let is_selected = self.selected_labels.contains(&node.full_path);
 
         if node.children.is_empty() {

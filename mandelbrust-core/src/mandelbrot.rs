@@ -114,10 +114,7 @@ impl Fractal for Mandelbrot {
                 2.0 * (z.re * dz.im + z.im * dz.re),
             );
 
-            z = Complex::new(
-                z.re * z.re - z.im * z.im + c.re,
-                2.0 * z.re * z.im + c.im,
-            );
+            z = Complex::new(z.re * z.re - z.im * z.im + c.re, 2.0 * z.re * z.im + c.im);
 
             let norm_sq = z.norm_sq();
 
@@ -145,11 +142,7 @@ impl Fractal for Mandelbrot {
 
             if n >= 32 && n & 3 == 0 {
                 if (z.re - old_z.re).abs() < 1e-13 && (z.im - old_z.im).abs() < 1e-13 {
-                    let stripe_avg = if n > 0 {
-                        stripe_sum / n as f64
-                    } else {
-                        0.0
-                    };
+                    let stripe_avg = if n > 0 { stripe_sum / n as f64 } else { 0.0 };
                     return (
                         IterationResult::Interior,
                         IterationExtras {

@@ -152,11 +152,7 @@ impl Fractal for MandelbrotDD {
                 let dre = (z.re - old_z.re).abs();
                 let dim = (z.im - old_z.im).abs();
                 if dre.hi < DD_PERIOD_TOLERANCE && dim.hi < DD_PERIOD_TOLERANCE {
-                    let stripe_avg = if n > 0 {
-                        stripe_sum / n as f64
-                    } else {
-                        0.0
-                    };
+                    let stripe_avg = if n > 0 { stripe_sum / n as f64 } else { 0.0 };
                     return (
                         IterationResult::Interior,
                         IterationExtras {
@@ -285,7 +281,10 @@ mod tests {
         let m = MandelbrotDD::new(FractalParams::default(), center);
         let result = m.iterate(Complex::new(0.0, 0.0));
         assert!(
-            matches!(result, IterationResult::Interior | IterationResult::Escaped { .. }),
+            matches!(
+                result,
+                IterationResult::Interior | IterationResult::Escaped { .. }
+            ),
             "should produce a valid result at deep zoom"
         );
     }

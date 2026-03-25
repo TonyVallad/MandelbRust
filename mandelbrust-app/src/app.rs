@@ -7,9 +7,7 @@ use std::time::Duration;
 use eframe::egui;
 use tracing::info;
 
-use mandelbrust_core::{
-    Complex, ComplexDD, DoubleDouble, FractalParams, Julia, Viewport,
-};
+use mandelbrust_core::{Complex, ComplexDD, DoubleDouble, FractalParams, Julia, Viewport};
 use mandelbrust_render::{
     builtin_palettes, AaSamples, ColorParams, ColoringMode as RenderColoringMode, ExtrasBuffer,
     InteriorMode as RenderInteriorMode, IterationBuffer, Palette, RenderCancel, RenderResult,
@@ -25,8 +23,7 @@ use crate::display_color::{
 };
 use crate::preferences::{AppPreferences, LastView};
 use crate::render_bridge::{
-    julia_grid_worker, render_worker, JuliaGridRequest, RenderPhase, RenderRequest,
-    RenderResponse,
+    julia_grid_worker, render_worker, JuliaGridRequest, RenderPhase, RenderRequest, RenderResponse,
 };
 
 // ---------------------------------------------------------------------------
@@ -142,12 +139,7 @@ fn load_window_icon() -> Option<egui::IconData> {
     let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Ico).ok()?;
     let rgba = img.to_rgba8();
     const SIZE: u32 = 32;
-    let resized = image::imageops::resize(
-        &rgba,
-        SIZE,
-        SIZE,
-        image::imageops::FilterType::Lanczos3,
-    );
+    let resized = image::imageops::resize(&rgba, SIZE, SIZE, image::imageops::FilterType::Lanczos3);
     Some(egui::IconData {
         rgba: resized.as_raw().clone(),
         width: SIZE,
@@ -327,45 +319,45 @@ impl MandelbRustApp {
         let w = prefs.window_width as u32;
         let h = prefs.window_height as u32;
 
-        let (mode, julia_c, params, viewport, mut display_color, aa_level) =
-            if prefs.restore_last_view {
-                if let Some(ref lv) = prefs.last_view {
-                    let m = match lv.mode.as_str() {
-                        "Julia" => FractalMode::Julia,
-                        _ => FractalMode::Mandelbrot,
-                    };
-                    let center_dd = ComplexDD::new(
-                        DoubleDouble::new(lv.center_re, lv.center_re_lo),
-                        DoubleDouble::new(lv.center_im, lv.center_im_lo),
-                    );
-                    let vp = Viewport::new_dd(center_dd, lv.scale, w, h)
-                        .unwrap_or_else(|_| Viewport::default_mandelbrot(w, h));
-                    let p = FractalParams::new(lv.max_iterations, lv.escape_radius)
-                        .unwrap_or_default();
-                    let dc = DisplayColorSettings {
-                        palette_index: lv.palette_index,
-                        smooth_coloring: lv.smooth_coloring,
-                        ..DisplayColorSettings::default()
-                    };
-                    info!(
-                        "Restoring last view: {} at zoom {:.2e}",
-                        lv.mode,
-                        1.0 / lv.scale
-                    );
-                    (
-                        m,
-                        Complex::new(lv.julia_c_re, lv.julia_c_im),
-                        p,
-                        vp,
-                        dc,
-                        lv.aa_level,
-                    )
-                } else {
-                    defaults_for(w, h, &prefs)
-                }
+        let (mode, julia_c, params, viewport, mut display_color, aa_level) = if prefs
+            .restore_last_view
+        {
+            if let Some(ref lv) = prefs.last_view {
+                let m = match lv.mode.as_str() {
+                    "Julia" => FractalMode::Julia,
+                    _ => FractalMode::Mandelbrot,
+                };
+                let center_dd = ComplexDD::new(
+                    DoubleDouble::new(lv.center_re, lv.center_re_lo),
+                    DoubleDouble::new(lv.center_im, lv.center_im_lo),
+                );
+                let vp = Viewport::new_dd(center_dd, lv.scale, w, h)
+                    .unwrap_or_else(|_| Viewport::default_mandelbrot(w, h));
+                let p = FractalParams::new(lv.max_iterations, lv.escape_radius).unwrap_or_default();
+                let dc = DisplayColorSettings {
+                    palette_index: lv.palette_index,
+                    smooth_coloring: lv.smooth_coloring,
+                    ..DisplayColorSettings::default()
+                };
+                info!(
+                    "Restoring last view: {} at zoom {:.2e}",
+                    lv.mode,
+                    1.0 / lv.scale
+                );
+                (
+                    m,
+                    Complex::new(lv.julia_c_re, lv.julia_c_im),
+                    p,
+                    vp,
+                    dc,
+                    lv.aa_level,
+                )
             } else {
                 defaults_for(w, h, &prefs)
-            };
+            }
+        } else {
+            defaults_for(w, h, &prefs)
+        };
 
         if let Some(ref saved) = prefs.last_display_color {
             display_color = saved.clone();
@@ -522,11 +514,7 @@ impl MandelbRustApp {
 
     pub(crate) fn current_palette(&self) -> &Palette {
         if let Some(ref name) = self.display_color.custom_palette_name {
-            if let Some(idx) = self
-                .user_palette_defs
-                .iter()
-                .position(|d| d.name == *name)
-            {
+            if let Some(idx) = self.user_palette_defs.iter().position(|d| d.name == *name) {
                 return &self.user_palette_cache[idx];
             }
         }
@@ -559,9 +547,7 @@ impl MandelbRustApp {
         };
         ColorParams {
             smooth: self.display_color.smooth_coloring,
-            cycle_length: self
-                .display_color
-                .cycle_length(self.params.max_iterations),
+            cycle_length: self.display_color.cycle_length(self.params.max_iterations),
             start_from,
             low_threshold_start: self.display_color.low_threshold_start,
             low_threshold_end: self.display_color.low_threshold_end,
@@ -597,8 +583,7 @@ impl MandelbRustApp {
                 [buffer.width as usize, buffer.height as usize],
                 &buffer.pixels,
             );
-            self.texture =
-                Some(ctx.load_texture("fractal", image, egui::TextureOptions::LINEAR));
+            self.texture = Some(ctx.load_texture("fractal", image, egui::TextureOptions::LINEAR));
             self.draw_offset = egui::Vec2::ZERO;
             self.update_resume_preview(ctx, &buffer.pixels, buffer.width, buffer.height);
         }
@@ -709,8 +694,7 @@ impl MandelbRustApp {
                 let (response, painter) =
                     ui.allocate_painter(available, egui::Sense::click_and_drag());
 
-                let uv =
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                 if let Some(ref bg) = self.drag_preview {
                     painter.image(bg.id(), response.rect, uv, egui::Color32::WHITE);
                 }
@@ -762,25 +746,18 @@ impl MandelbRustApp {
                     if let Some(pos) = response.hover_pos() {
                         let rect = response.rect;
                         painter.line_segment(
-                            [
-                                egui::pos2(rect.min.x, pos.y),
-                                egui::pos2(rect.max.x, pos.y),
-                            ],
+                            [egui::pos2(rect.min.x, pos.y), egui::pos2(rect.max.x, pos.y)],
                             stroke,
                         );
                         painter.line_segment(
-                            [
-                                egui::pos2(pos.x, rect.min.y),
-                                egui::pos2(pos.x, rect.max.y),
-                            ],
+                            [egui::pos2(pos.x, rect.min.y), egui::pos2(pos.x, rect.max.y)],
                             stroke,
                         );
                     }
 
                     let center = response.rect.center();
                     let arm = 8.0;
-                    let center_color =
-                        egui::Color32::from_rgba_premultiplied(255, 160, 80, 180);
+                    let center_color = egui::Color32::from_rgba_premultiplied(255, 160, 80, 180);
                     let center_stroke = egui::Stroke::new(1.5, center_color);
                     painter.circle_stroke(center, 4.0, center_stroke);
                     painter.line_segment(

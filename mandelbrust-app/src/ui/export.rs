@@ -13,9 +13,8 @@ use mandelbrust_render::{ExportMetadata, RenderCancel};
 use crate::app::{FractalMode, MandelbRustApp};
 use crate::app_dir;
 use crate::display_color::{
-    ColoringMode as DisplayColoringMode, DisplayColorSettings,
-    InteriorMode as DisplayInteriorMode, PaletteMode as DisplayPaletteMode,
-    StartFrom as DisplayStartFrom,
+    ColoringMode as DisplayColoringMode, DisplayColorSettings, InteriorMode as DisplayInteriorMode,
+    PaletteMode as DisplayPaletteMode, StartFrom as DisplayStartFrom,
 };
 use crate::render_bridge::render_for_mode;
 
@@ -30,12 +29,36 @@ struct ResolutionPreset {
 }
 
 const PRESETS: &[ResolutionPreset] = &[
-    ResolutionPreset { label: "1280 x 720  (HD)", width: 1280, height: 720 },
-    ResolutionPreset { label: "1920 x 1080  (Full HD)", width: 1920, height: 1080 },
-    ResolutionPreset { label: "2560 x 1440  (QHD)", width: 2560, height: 1440 },
-    ResolutionPreset { label: "3840 x 2160  (4K UHD)", width: 3840, height: 2160 },
-    ResolutionPreset { label: "5120 x 2880  (5K)", width: 5120, height: 2880 },
-    ResolutionPreset { label: "7680 x 4320  (8K UHD)", width: 7680, height: 4320 },
+    ResolutionPreset {
+        label: "1280 x 720  (HD)",
+        width: 1280,
+        height: 720,
+    },
+    ResolutionPreset {
+        label: "1920 x 1080  (Full HD)",
+        width: 1920,
+        height: 1080,
+    },
+    ResolutionPreset {
+        label: "2560 x 1440  (QHD)",
+        width: 2560,
+        height: 1440,
+    },
+    ResolutionPreset {
+        label: "3840 x 2160  (4K UHD)",
+        width: 3840,
+        height: 2160,
+    },
+    ResolutionPreset {
+        label: "5120 x 2880  (5K)",
+        width: 5120,
+        height: 2880,
+    },
+    ResolutionPreset {
+        label: "7680 x 4320  (8K UHD)",
+        width: 7680,
+        height: 4320,
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -88,7 +111,10 @@ impl ExportState {
         if self.is_custom() {
             self.custom_width.parse().unwrap_or(1920)
         } else {
-            PRESETS.get(self.preset_index).map(|p| p.width).unwrap_or(1920)
+            PRESETS
+                .get(self.preset_index)
+                .map(|p| p.width)
+                .unwrap_or(1920)
         }
     }
 
@@ -96,7 +122,10 @@ impl ExportState {
         if self.is_custom() {
             self.custom_height.parse().unwrap_or(1080)
         } else {
-            PRESETS.get(self.preset_index).map(|p| p.height).unwrap_or(1080)
+            PRESETS
+                .get(self.preset_index)
+                .map(|p| p.height)
+                .unwrap_or(1080)
         }
     }
 
@@ -108,7 +137,10 @@ impl ExportState {
         if self.is_custom() {
             "Custom".into()
         } else {
-            PRESETS.get(self.preset_index).map(|p| p.label.to_string()).unwrap_or("Custom".into())
+            PRESETS
+                .get(self.preset_index)
+                .map(|p| p.label.to_string())
+                .unwrap_or("Custom".into())
         }
     }
 }
@@ -193,9 +225,11 @@ impl MandelbRustApp {
                 let hint = self.default_export_name();
                 ui.horizontal(|ui| {
                     ui.label("Image name:");
-                    ui.add(egui::TextEdit::singleline(&mut self.export_state.image_name)
-                        .desired_width(220.0)
-                        .hint_text(hint));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.export_state.image_name)
+                            .desired_width(220.0)
+                            .hint_text(hint),
+                    );
                 });
 
                 ui.add_space(6.0);
@@ -226,11 +260,15 @@ impl MandelbRustApp {
                     ui.horizontal(|ui| {
                         ui.add_space(80.0);
                         ui.label("Width:");
-                        ui.add(egui::TextEdit::singleline(&mut self.export_state.custom_width)
-                            .desired_width(60.0));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.export_state.custom_width)
+                                .desired_width(60.0),
+                        );
                         ui.label("Height:");
-                        ui.add(egui::TextEdit::singleline(&mut self.export_state.custom_height)
-                            .desired_width(60.0));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.export_state.custom_height)
+                                .desired_width(60.0),
+                        );
                     });
                 }
 
@@ -238,8 +276,10 @@ impl MandelbRustApp {
 
                 ui.horizontal(|ui| {
                     ui.label("Max iterations:");
-                    ui.add(egui::TextEdit::singleline(&mut self.export_state.max_iterations)
-                        .desired_width(80.0));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.export_state.max_iterations)
+                            .desired_width(80.0),
+                    );
                 });
 
                 ui.add_space(6.0);
@@ -266,20 +306,25 @@ impl MandelbRustApp {
                 // Palette picker (user palettes + builtins)
                 ui.horizontal(|ui| {
                     ui.label("Palette:");
-                    let selected_name = if let Some(ref cn) = self.export_state.display_color.custom_palette_name {
-                        cn.clone()
-                    } else {
-                        self.palettes
-                            .get(self.export_state.display_color.palette_index)
-                            .map(|p| p.name.clone())
-                            .unwrap_or_else(|| "?".into())
-                    };
+                    let selected_name =
+                        if let Some(ref cn) = self.export_state.display_color.custom_palette_name {
+                            cn.clone()
+                        } else {
+                            self.palettes
+                                .get(self.export_state.display_color.palette_index)
+                                .map(|p| p.name.clone())
+                                .unwrap_or_else(|| "?".into())
+                        };
                     egui::ComboBox::from_id_salt("export_palette")
                         .selected_text(&selected_name)
                         .width(160.0)
                         .show_ui(ui, |ui| {
                             for def in &self.user_palette_defs {
-                                let active = self.export_state.display_color.custom_palette_name.as_deref()
+                                let active = self
+                                    .export_state
+                                    .display_color
+                                    .custom_palette_name
+                                    .as_deref()
                                     == Some(&def.name);
                                 if ui.selectable_label(active, &def.name).clicked() {
                                     self.export_state.display_color.custom_palette_name =
@@ -290,7 +335,11 @@ impl MandelbRustApp {
                                 ui.separator();
                             }
                             for (i, pal) in self.palettes.iter().enumerate() {
-                                let active = self.export_state.display_color.custom_palette_name.is_none()
+                                let active = self
+                                    .export_state
+                                    .display_color
+                                    .custom_palette_name
+                                    .is_none()
                                     && self.export_state.display_color.palette_index == i;
                                 if ui.selectable_label(active, pal.name.as_str()).clicked() {
                                     self.export_state.display_color.palette_index = i;
@@ -319,10 +368,11 @@ impl MandelbRustApp {
                 });
 
                 ui.horizontal(|ui| {
-                    let (mut mode_val, is_cycles) = match self.export_state.display_color.palette_mode {
-                        DisplayPaletteMode::ByCycles { n } => (n as i32, true),
-                        DisplayPaletteMode::ByCycleLength { len } => (len as i32, false),
-                    };
+                    let (mut mode_val, is_cycles) =
+                        match self.export_state.display_color.palette_mode {
+                            DisplayPaletteMode::ByCycles { n } => (n as i32, true),
+                            DisplayPaletteMode::ByCycleLength { len } => (len as i32, false),
+                        };
                     ui.add_space(48.0);
                     if ui
                         .add(egui::DragValue::new(&mut mode_val).range(1..=i32::MAX))
@@ -335,7 +385,11 @@ impl MandelbRustApp {
                             DisplayPaletteMode::ByCycleLength { len: v }
                         };
                     }
-                    ui.label(if is_cycles { "cycles" } else { "iterations per cycle" });
+                    ui.label(if is_cycles {
+                        "cycles"
+                    } else {
+                        "iterations per cycle"
+                    });
                 });
 
                 // Smooth coloring
@@ -378,7 +432,9 @@ impl MandelbRustApp {
                     }
                 });
 
-                if self.export_state.display_color.interior_mode == DisplayInteriorMode::StripeAverage {
+                if self.export_state.display_color.interior_mode
+                    == DisplayInteriorMode::StripeAverage
+                {
                     ui.horizontal(|ui| {
                         ui.add_space(48.0);
                         ui.label("Density:");
@@ -418,7 +474,8 @@ impl MandelbRustApp {
                             .add(egui::DragValue::new(&mut start).range(0..=i32::MAX))
                             .changed()
                         {
-                            self.export_state.display_color.low_threshold_start = start.max(0) as u32;
+                            self.export_state.display_color.low_threshold_start =
+                                start.max(0) as u32;
                         }
                         ui.label("End:");
                         let mut end = self.export_state.display_color.low_threshold_end as i32;
@@ -443,10 +500,16 @@ impl MandelbRustApp {
                 ui.horizontal(|ui| {
                     if busy {
                         let (done, total) = self.export_state.export_cancel.progress();
-                        let pct = if total > 0 { done as f32 / total as f32 } else { 0.0 };
-                        ui.add(egui::ProgressBar::new(pct).desired_width(200.0).text(
-                            format!("Exporting… {:.0}%", pct * 100.0),
-                        ));
+                        let pct = if total > 0 {
+                            done as f32 / total as f32
+                        } else {
+                            0.0
+                        };
+                        ui.add(
+                            egui::ProgressBar::new(pct)
+                                .desired_width(200.0)
+                                .text(format!("Exporting… {:.0}%", pct * 100.0)),
+                        );
                         if ui.button("Cancel").clicked() {
                             self.export_state.export_cancel.cancel();
                         }
@@ -547,8 +610,8 @@ impl MandelbRustApp {
         let viewer_complex_w = self.viewport.complex_width();
         let viewer_complex_h = self.viewport.complex_height();
         let export_scale = (viewer_complex_w / w as f64).max(viewer_complex_h / h as f64);
-        let viewport = Viewport::new_dd(self.viewport.center_dd, export_scale, w, h)
-            .unwrap_or(self.viewport);
+        let viewport =
+            Viewport::new_dd(self.viewport.center_dd, export_scale, w, h).unwrap_or(self.viewport);
 
         let mode = self.mode;
         let julia_c = self.julia_c;
@@ -559,11 +622,15 @@ impl MandelbRustApp {
                 .find(|d| d.name == *name)
                 .map(mandelbrust_render::Palette::from_definition)
                 .unwrap_or_else(|| {
-                    let idx = export_dc.palette_index.min(self.palettes.len().saturating_sub(1));
+                    let idx = export_dc
+                        .palette_index
+                        .min(self.palettes.len().saturating_sub(1));
                     self.palettes[idx].clone()
                 })
         } else {
-            let idx = export_dc.palette_index.min(self.palettes.len().saturating_sub(1));
+            let idx = export_dc
+                .palette_index
+                .min(self.palettes.len().saturating_sub(1));
             self.palettes[idx].clone()
         };
         let color_params = Self::color_params_from_display(export_dc, max_iter);
@@ -610,9 +677,18 @@ impl MandelbRustApp {
         debug!("Export started: {} → {}", name, path.display());
 
         let job = ExportJob {
-            mode, params, julia_c, viewport, cancel, aa_level,
-            palette, color_params, metadata, path,
-            compute_extras: needs_extras, stripe_density,
+            mode,
+            params,
+            julia_c,
+            viewport,
+            cancel,
+            aa_level,
+            palette,
+            color_params,
+            metadata,
+            path,
+            compute_extras: needs_extras,
+            stripe_density,
         };
 
         let ctx = self.egui_ctx.clone();
@@ -640,7 +716,8 @@ impl MandelbRustApp {
             match result {
                 ExportWorkerResult::Success(path) => {
                     info!("Export complete: {}", path.display());
-                    let short = path.file_name()
+                    let short = path
+                        .file_name()
                         .map(|f| f.to_string_lossy().into_owned())
                         .unwrap_or_else(|| path.display().to_string());
                     self.export_state.export_notification = Some((
@@ -714,8 +791,14 @@ struct ExportJob {
 
 fn export_worker(job: &ExportJob) -> ExportWorkerResult {
     let result = render_for_mode(
-        job.mode, job.params, job.julia_c, &job.viewport, &job.cancel, job.aa_level,
-        job.compute_extras, job.stripe_density,
+        job.mode,
+        job.params,
+        job.julia_c,
+        &job.viewport,
+        &job.cancel,
+        job.aa_level,
+        job.compute_extras,
+        job.stripe_density,
     );
 
     if result.cancelled {
@@ -756,7 +839,13 @@ fn aa_label(level: u32) -> &'static str {
 
 fn sanitize_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .trim()
         .to_string()

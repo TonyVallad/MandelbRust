@@ -71,7 +71,10 @@ impl MandelbRustApp {
                                     ("Left drag", "Pan"),
                                     ("Right drag", "Selection-box zoom"),
                                     ("Scroll wheel", "Zoom at cursor"),
-                                    ("Click Julia (bottom-left)", "Open Julia C Explorer (pick c)"),
+                                    (
+                                        "Click Julia (bottom-left)",
+                                        "Open Julia C Explorer (pick c)",
+                                    ),
                                     ("Shift+Click", "Pick Julia c value (Julia mode)"),
                                     ("Left-click (Mandelbrot, J on)", "Load Julia at cursor c"),
                                 ];

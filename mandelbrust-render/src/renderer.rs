@@ -148,7 +148,12 @@ fn check_border_uniform<F: Fractal>(
         if top.class() != class {
             return None;
         }
-        let bot = fractal.iterate(map_pixel(fractal, viewport, tile.x + px, tile.y + tile.height - 1));
+        let bot = fractal.iterate(map_pixel(
+            fractal,
+            viewport,
+            tile.x + px,
+            tile.y + tile.height - 1,
+        ));
         if bot.class() != class {
             return None;
         }
@@ -160,8 +165,12 @@ fn check_border_uniform<F: Fractal>(
         if left.class() != class {
             return None;
         }
-        let right =
-            fractal.iterate(map_pixel(fractal, viewport, tile.x + tile.width - 1, tile.y + py));
+        let right = fractal.iterate(map_pixel(
+            fractal,
+            viewport,
+            tile.x + tile.width - 1,
+            tile.y + py,
+        ));
         if right.class() != class {
             return None;
         }
@@ -279,9 +288,27 @@ pub fn render<F: Fractal + Sync>(
     cancel.reset_progress(renderable_count);
 
     let (tile_data, cancelled, tiles_rendered, tiles_mirrored) = if let Some(ref ct) = classified {
-        render_with_symmetry(fractal, viewport, ct, cancel, gen, &bt_count, compute_extras, opts.stripe_density)
+        render_with_symmetry(
+            fractal,
+            viewport,
+            ct,
+            cancel,
+            gen,
+            &bt_count,
+            compute_extras,
+            opts.stripe_density,
+        )
     } else {
-        render_all_tiles(fractal, viewport, &tiles, cancel, gen, &bt_count, compute_extras, opts.stripe_density)
+        render_all_tiles(
+            fractal,
+            viewport,
+            &tiles,
+            cancel,
+            gen,
+            &bt_count,
+            compute_extras,
+            opts.stripe_density,
+        )
     };
 
     let mut iterations = IterationBuffer::new(viewport.width, viewport.height, max_iter);
@@ -332,7 +359,14 @@ fn render_all_tiles<F: Fractal + Sync>(
             if cancel.generation() != gen {
                 return None;
             }
-            let data = render_tile(fractal, viewport, tile, bt_count, compute_extras, stripe_density);
+            let data = render_tile(
+                fractal,
+                viewport,
+                tile,
+                bt_count,
+                compute_extras,
+                stripe_density,
+            );
             cancel.inc_progress();
             Some(data)
         })
@@ -362,7 +396,14 @@ fn render_with_symmetry<F: Fractal + Sync>(
             match ct.kind {
                 TileKind::Mirror { .. } => None,
                 _ => {
-                    let data = render_tile(fractal, viewport, &ct.tile, bt_count, compute_extras, stripe_density);
+                    let data = render_tile(
+                        fractal,
+                        viewport,
+                        &ct.tile,
+                        bt_count,
+                        compute_extras,
+                        stripe_density,
+                    );
                     cancel.inc_progress();
                     Some(data)
                 }

@@ -29,7 +29,11 @@ fn sanitize_name(name: &str) -> String {
 pub fn ensure_default_profile() {
     let dir = color_profiles_dir();
     if let Err(e) = fs::create_dir_all(&dir) {
-        warn!("Could not create color_profiles dir {}: {}", dir.display(), e);
+        warn!(
+            "Could not create color_profiles dir {}: {}",
+            dir.display(),
+            e
+        );
         return;
     }
     let entries: Vec<_> = match fs::read_dir(&dir) {
@@ -48,7 +52,10 @@ pub fn ensure_default_profile() {
     if !has_any_json {
         let default = DisplayColorSettings::default();
         if save_profile_inner(&dir, DEFAULT_PROFILE_NAME, &default).is_ok() {
-            info!("Created default color profile at {}/Default.json", dir.display());
+            info!(
+                "Created default color profile at {}/Default.json",
+                dir.display()
+            );
         }
     }
 }
@@ -103,9 +110,8 @@ fn save_profile_inner(
     settings: &DisplayColorSettings,
 ) -> std::io::Result<()> {
     let path = dir.join(sanitize_name(name)).with_extension("json");
-    let json = serde_json::to_string_pretty(settings).map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-    })?;
+    let json = serde_json::to_string_pretty(settings)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     fs::write(path, json)
 }
 

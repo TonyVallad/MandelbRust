@@ -1,9 +1,10 @@
 /// Top-level screen the application is currently displaying.
 ///
 /// Used to dispatch `update()` to the right screen-drawing logic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum AppScreen {
     /// Main menu shown at startup.
+    #[default]
     MainMenu,
     /// The main fractal rendering / exploration view.
     FractalExplorer,
@@ -11,10 +12,4 @@ pub(crate) enum AppScreen {
     BookmarkBrowser,
     /// Full-window Julia C Explorer (accessed from main menu).
     JuliaCExplorer,
-}
-
-impl Default for AppScreen {
-    fn default() -> Self {
-        Self::MainMenu
-    }
 }

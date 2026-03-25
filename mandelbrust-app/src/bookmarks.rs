@@ -475,12 +475,10 @@ impl BookmarkStore {
                 path,
                 content: json,
             });
+        } else if let Err(e) = fs::write(&path, &json) {
+            error!("Failed to write bookmark file {}: {e}", path.display());
         } else {
-            if let Err(e) = fs::write(&path, &json) {
-                error!("Failed to write bookmark file {}: {e}", path.display());
-            } else {
-                debug!("Wrote bookmark file: {}", path.display());
-            }
+            debug!("Wrote bookmark file: {}", path.display());
         }
     }
 
@@ -489,10 +487,8 @@ impl BookmarkStore {
         let path = self.dir.join(filename);
         if let Some(ref tx) = self.io_tx {
             let _ = tx.send(IoRequest::DeleteFile { path });
-        } else {
-            if let Err(e) = fs::remove_file(&path) {
-                debug!("Failed to delete bookmark file {}: {e}", path.display());
-            }
+        } else if let Err(e) = fs::remove_file(&path) {
+            debug!("Failed to delete bookmark file {}: {e}", path.display());
         }
     }
 

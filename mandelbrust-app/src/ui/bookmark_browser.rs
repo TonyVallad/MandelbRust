@@ -58,8 +58,7 @@ impl MandelbRustApp {
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let can_open = self.browser_selected_bookmark.is_some();
-                        let hud_alpha = (self.preferences.hud_panel_opacity.clamp(0.0, 1.0)
-                            * 255.0)
+                        let hud_alpha = (self.preferences.hud_panel_opacity.clamp(0.0, 1.0) * 255.0)
                             .round() as u8;
                         let btn = egui::Button::new("Open Bookmark")
                             .fill(egui::Color32::from_black_alpha(hud_alpha));
@@ -95,8 +94,7 @@ impl MandelbRustApp {
                 ui.horizontal(|ui| {
                     ui.label("Search:");
                     ui.add(
-                        egui::TextEdit::singleline(&mut self.bookmark_search)
-                            .desired_width(200.0),
+                        egui::TextEdit::singleline(&mut self.bookmark_search).desired_width(200.0),
                     );
                     if ui.small_button("A-Z").clicked() {
                         self.bookmark_store.sort_by_name();

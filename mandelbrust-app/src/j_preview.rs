@@ -43,8 +43,10 @@ pub fn draw_j_preview_panel(ctx: &egui::Context, params: JPreviewDrawParams<'_>)
                     let (rect, _) =
                         ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
                     let image_side = rect.width().min(rect.height());
-                    let image_rect =
-                        egui::Rect::from_center_size(rect.center(), egui::vec2(image_side, image_side));
+                    let image_rect = egui::Rect::from_center_size(
+                        rect.center(),
+                        egui::vec2(image_side, image_side),
+                    );
 
                     if let Some(tex) = params.texture {
                         let uv =
@@ -64,11 +66,8 @@ pub fn draw_j_preview_panel(ctx: &egui::Context, params: JPreviewDrawParams<'_>)
                             egui::Color32::GRAY,
                         );
                     } else {
-                        ui.painter().rect_filled(
-                            rect,
-                            0.0,
-                            egui::Color32::from_black_alpha(120),
-                        );
+                        ui.painter()
+                            .rect_filled(rect, 0.0, egui::Color32::from_black_alpha(120));
                         ui.painter().text(
                             rect.center(),
                             egui::Align2::CENTER_CENTER,
@@ -81,28 +80,35 @@ pub fn draw_j_preview_panel(ctx: &egui::Context, params: JPreviewDrawParams<'_>)
                     if params.is_mandelbrot_preview {
                         let crosshair_color = egui::Color32::WHITE;
                         let vp = params.preview_viewport;
-                        let px = (params.julia_c.re - vp.center.re) / vp.scale
-                            + (vp.width as f64) * 0.5;
+                        let px =
+                            (params.julia_c.re - vp.center.re) / vp.scale + (vp.width as f64) * 0.5;
                         let py = (vp.height as f64) * 0.5
                             - (params.julia_c.im - vp.center.im) / vp.scale;
-                        let cx = image_rect.min.x
-                            + (px as f32 / vp.width as f32) * image_rect.width();
-                        let cy = image_rect.min.y
-                            + (py as f32 / vp.height as f32) * image_rect.height();
+                        let cx =
+                            image_rect.min.x + (px as f32 / vp.width as f32) * image_rect.width();
+                        let cy =
+                            image_rect.min.y + (py as f32 / vp.height as f32) * image_rect.height();
                         let stroke = egui::Stroke::new(1.0, crosshair_color);
                         ui.painter().line_segment(
-                            [egui::pos2(cx, image_rect.min.y), egui::pos2(cx, image_rect.max.y)],
+                            [
+                                egui::pos2(cx, image_rect.min.y),
+                                egui::pos2(cx, image_rect.max.y),
+                            ],
                             stroke,
                         );
                         ui.painter().line_segment(
-                            [egui::pos2(image_rect.min.x, cy), egui::pos2(image_rect.max.x, cy)],
+                            [
+                                egui::pos2(image_rect.min.x, cy),
+                                egui::pos2(image_rect.max.x, cy),
+                            ],
                             stroke,
                         );
                     }
 
                     let border_stroke =
                         egui::Stroke::new(1.0, egui::Color32::from_white_alpha(BORDER_ALPHA));
-                    ui.painter().rect_stroke(rect, 0.0, border_stroke, egui::StrokeKind::Outside);
+                    ui.painter()
+                        .rect_stroke(rect, 0.0, border_stroke, egui::StrokeKind::Outside);
                 });
         });
 }

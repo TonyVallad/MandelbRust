@@ -14,7 +14,7 @@ use super::color_picker::{show_color_picker, ColorPickerState};
 use crate::app::MandelbRustApp;
 
 /// Persistent state for the palette editor.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct PaletteEditorState {
     pub selected_stop: Option<usize>,
     pub picker: ColorPickerState,
@@ -22,19 +22,6 @@ pub(crate) struct PaletteEditorState {
     pub renaming: bool,
     pub dragging_stop: Option<usize>,
     pub confirm_space_evenly: bool,
-}
-
-impl Default for PaletteEditorState {
-    fn default() -> Self {
-        Self {
-            selected_stop: None,
-            picker: ColorPickerState::default(),
-            rename_text: String::new(),
-            renaming: false,
-            dragging_stop: None,
-            confirm_space_evenly: false,
-        }
-    }
 }
 
 /// Response flags from palette editor UI.
@@ -57,8 +44,11 @@ impl MandelbRustApp {
 
         // --- User palettes ---
         ui.heading("User palettes");
-        let names: Vec<String> =
-            self.user_palette_defs.iter().map(|d| d.name.clone()).collect();
+        let names: Vec<String> = self
+            .user_palette_defs
+            .iter()
+            .map(|d| d.name.clone())
+            .collect();
         for (i, name) in names.iter().enumerate() {
             ui.horizontal(|ui| {
                 let swatch = palette_preview_strip(&self.user_palette_defs[i], 40);
@@ -114,16 +104,18 @@ impl MandelbRustApp {
                 self.display_color.custom_palette_name = Some(pname);
                 self.palette_editor_state.selected_stop = None;
                 self.palette_editor_state.renaming = true;
-                self.palette_editor_state.rename_text =
-                    self.display_color.custom_palette_name.clone().unwrap_or_default();
+                self.palette_editor_state.rename_text = self
+                    .display_color
+                    .custom_palette_name
+                    .clone()
+                    .unwrap_or_default();
                 self.show_palette_editor_window = true;
                 changed = true;
                 self.pending_minimap_bump = true;
             }
-            if self.display_color.custom_palette_name.is_some() {
-                if ui.small_button("Edit").clicked() {
-                    self.show_palette_editor_window = true;
-                }
+            if self.display_color.custom_palette_name.is_some() && ui.small_button("Edit").clicked()
+            {
+                self.show_palette_editor_window = true;
             }
         });
 
@@ -227,10 +219,8 @@ impl MandelbRustApp {
                             )
                             .lost_focus();
                         if done || ui.small_button("Ok").clicked() {
-                            let new_name =
-                                self.palette_editor_state.rename_text.trim().to_string();
-                            if !new_name.is_empty()
-                                && new_name != self.user_palette_defs[idx].name
+                            let new_name = self.palette_editor_state.rename_text.trim().to_string();
+                            if !new_name.is_empty() && new_name != self.user_palette_defs[idx].name
                             {
                                 let old = self.user_palette_defs[idx].name.clone();
                                 let _ = crate::palette_io::rename_palette(&old, &new_name);
@@ -282,8 +272,8 @@ impl MandelbRustApp {
                 // --- Gradient bar ---
                 let bar_width = ui.available_width().min(280.0);
                 let bar_height = 24.0;
-                let (bar_rect, bar_resp) = ui
-                    .allocate_exact_size(egui::vec2(bar_width, bar_height), egui::Sense::click());
+                let (bar_rect, bar_resp) =
+                    ui.allocate_exact_size(egui::vec2(bar_width, bar_height), egui::Sense::click());
 
                 paint_gradient_bar(ui.painter(), bar_rect, &self.user_palette_defs[idx]);
 
@@ -342,38 +332,24 @@ impl MandelbRustApp {
                         ui.painter().rect_filled(
                             ep_rect,
                             2.0,
-                            egui::Color32::from_rgb(
-                                stop.color.r,
-                                stop.color.g,
-                                stop.color.b,
-                            ),
+                            egui::Color32::from_rgb(stop.color.r, stop.color.g, stop.color.b),
                         );
                         ui.painter().rect_stroke(
                             ep_rect,
                             2.0,
-                            egui::Stroke::new(
-                                if is_selected { 2.0 } else { 1.0 },
-                                stroke_color,
-                            ),
+                            egui::Stroke::new(if is_selected { 2.0 } else { 1.0 }, stroke_color),
                             egui::StrokeKind::Outside,
                         );
                     } else {
                         ui.painter().circle_filled(
                             center,
                             stop_radius,
-                            egui::Color32::from_rgb(
-                                stop.color.r,
-                                stop.color.g,
-                                stop.color.b,
-                            ),
+                            egui::Color32::from_rgb(stop.color.r, stop.color.g, stop.color.b),
                         );
                         ui.painter().circle_stroke(
                             center,
                             stop_radius,
-                            egui::Stroke::new(
-                                if is_selected { 2.0 } else { 1.0 },
-                                stroke_color,
-                            ),
+                            egui::Stroke::new(if is_selected { 2.0 } else { 1.0 }, stroke_color),
                         );
                     }
                 }
@@ -398,13 +374,12 @@ impl MandelbRustApp {
 
                 if markers_resp.dragged() {
                     if let Some(si) = self.palette_editor_state.dragging_stop {
-                        let is_endpoint = si == 0
-                            || si == self.user_palette_defs[idx].colors.len() - 1;
+                        let is_endpoint =
+                            si == 0 || si == self.user_palette_defs[idx].colors.len() - 1;
                         if !is_endpoint {
                             if let Some(pos) = markers_resp.interact_pointer_pos() {
-                                let t = ((pos.x - bar_rect.min.x) / bar_width)
-                                    .clamp(0.01, 0.99)
-                                    as f64;
+                                let t =
+                                    ((pos.x - bar_rect.min.x) / bar_width).clamp(0.01, 0.99) as f64;
                                 self.user_palette_defs[idx].colors[si].position = t;
                                 resp.palette_changed = true;
                             }
@@ -468,20 +443,18 @@ impl MandelbRustApp {
                     if let Some(si) = self.palette_editor_state.selected_stop {
                         let nstops = self.user_palette_defs[idx].colors.len();
                         let is_endpoint = si == 0 || si == nstops - 1;
-                        if !is_endpoint && nstops > 2 {
-                            if ui.small_button("Remove stop").clicked() {
-                                self.user_palette_defs[idx].colors.remove(si);
-                                self.palette_editor_state.selected_stop = None;
-                                resp.palette_changed = true;
-                            }
+                        if !is_endpoint && nstops > 2 && ui.small_button("Remove stop").clicked() {
+                            self.user_palette_defs[idx].colors.remove(si);
+                            self.palette_editor_state.selected_stop = None;
+                            resp.palette_changed = true;
                         }
                     }
 
                     // Space evenly
-                    if self.user_palette_defs[idx].colors.len() > 2 {
-                        if ui.small_button("Space evenly").clicked() {
-                            self.palette_editor_state.confirm_space_evenly = true;
-                        }
+                    if self.user_palette_defs[idx].colors.len() > 2
+                        && ui.small_button("Space evenly").clicked()
+                    {
+                        self.palette_editor_state.confirm_space_evenly = true;
                     }
                 });
 
@@ -492,8 +465,7 @@ impl MandelbRustApp {
                     if si < self.user_palette_defs[idx].colors.len() {
                         let nstops = self.user_palette_defs[idx].colors.len();
                         let is_last = si == nstops - 1;
-                        let locked_end =
-                            is_last && self.user_palette_defs[idx].lock_end_to_start;
+                        let locked_end = is_last && self.user_palette_defs[idx].lock_end_to_start;
 
                         ui.separator();
                         let stop_label = if si == 0 {
@@ -510,10 +482,7 @@ impl MandelbRustApp {
 
                         if locked_end {
                             ui.weak("(locked to start color)");
-                        } else if show_color_picker(
-                            ui,
-                            &mut self.palette_editor_state.picker,
-                        ) {
+                        } else if show_color_picker(ui, &mut self.palette_editor_state.picker) {
                             let pk = &self.palette_editor_state.picker;
                             self.user_palette_defs[idx].colors[si].color =
                                 Rgb::new(pk.r, pk.g, pk.b);
@@ -577,8 +546,7 @@ impl MandelbRustApp {
                         self.user_palette_defs[idx].sort_stops();
                         self.user_palette_cache[idx] =
                             Palette::from_definition(&self.user_palette_defs[idx]);
-                        let _ =
-                            crate::palette_io::save_palette(&self.user_palette_defs[idx]);
+                        let _ = crate::palette_io::save_palette(&self.user_palette_defs[idx]);
                         resp.palette_changed = true;
                         resp.needs_recolorize = true;
                     }
@@ -625,21 +593,14 @@ fn paint_gradient_bar(painter: &egui::Painter, rect: egui::Rect, def: &PaletteDe
     );
 }
 
-fn closest_stop(
-    stops: &[ColorStop],
-    mouse_x: f32,
-    bar_left: f32,
-    bar_width: f32,
-) -> Option<usize> {
+fn closest_stop(stops: &[ColorStop], mouse_x: f32, bar_left: f32, bar_width: f32) -> Option<usize> {
     let threshold = 10.0_f32;
     let mut best: Option<(usize, f32)> = None;
     for (i, stop) in stops.iter().enumerate() {
         let x = bar_left + stop.position as f32 * bar_width;
         let dist = (mouse_x - x).abs();
-        if dist < threshold {
-            if best.map_or(true, |(_, bd)| dist < bd) {
-                best = Some((i, dist));
-            }
+        if dist < threshold && best.is_none_or(|(_, bd)| dist < bd) {
+            best = Some((i, dist));
         }
     }
     best.map(|(i, _)| i)

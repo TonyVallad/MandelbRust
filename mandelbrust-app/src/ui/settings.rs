@@ -20,11 +20,7 @@ impl MandelbRustApp {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.selectable_value(
-                        &mut self.settings_tab,
-                        SettingsTab::General,
-                        "General",
-                    );
+                    ui.selectable_value(&mut self.settings_tab, SettingsTab::General, "General");
                     ui.selectable_value(
                         &mut self.settings_tab,
                         SettingsTab::Minimap,
@@ -40,12 +36,10 @@ impl MandelbRustApp {
 
                 egui::ScrollArea::vertical()
                     .max_height(500.0)
-                    .show(ui, |ui| {
-                        match self.settings_tab {
-                            SettingsTab::General => self.draw_settings_general(ui),
-                            SettingsTab::Minimap => self.draw_settings_minimap(ui),
-                            SettingsTab::JuliaExplorer => self.draw_settings_julia_explorer(ui),
-                        }
+                    .show(ui, |ui| match self.settings_tab {
+                        SettingsTab::General => self.draw_settings_general(ui),
+                        SettingsTab::Minimap => self.draw_settings_minimap(ui),
+                        SettingsTab::JuliaExplorer => self.draw_settings_julia_explorer(ui),
                     });
             });
 
@@ -138,20 +132,14 @@ impl MandelbRustApp {
                 })
                 .show_ui(ui, |ui| {
                     use preferences::MinimapSize;
-                    for size in
-                        [MinimapSize::Small, MinimapSize::Medium, MinimapSize::Large]
-                    {
+                    for size in [MinimapSize::Small, MinimapSize::Medium, MinimapSize::Large] {
                         let label = match size {
                             MinimapSize::Small => "Small (128 px)",
                             MinimapSize::Medium => "Medium (256 px)",
                             MinimapSize::Large => "Large (384 px)",
                         };
                         if ui
-                            .selectable_value(
-                                &mut self.preferences.minimap_size,
-                                size,
-                                label,
-                            )
+                            .selectable_value(&mut self.preferences.minimap_size, size, label)
                             .changed()
                         {
                             self.preferences.save();
@@ -162,11 +150,8 @@ impl MandelbRustApp {
         });
         if ui
             .add(
-                egui::Slider::new(
-                    &mut self.preferences.minimap_zoom_half_extent,
-                    0.5..=10.0,
-                )
-                .text("Zoom range (\u{00b1})"),
+                egui::Slider::new(&mut self.preferences.minimap_zoom_half_extent, 0.5..=10.0)
+                    .text("Zoom range (\u{00b1})"),
             )
             .changed()
         {
@@ -186,8 +171,7 @@ impl MandelbRustApp {
         }
         if ui
             .add(
-                egui::Slider::new(&mut self.preferences.minimap_opacity, 0.0..=1.0)
-                    .text("Opacity"),
+                egui::Slider::new(&mut self.preferences.minimap_opacity, 0.0..=1.0).text("Opacity"),
             )
             .changed()
         {
@@ -197,10 +181,7 @@ impl MandelbRustApp {
         ui.add_space(10.0);
         ui.heading("Julia preview panel");
         if ui
-            .checkbox(
-                &mut self.preferences.show_j_preview,
-                "Show J preview panel",
-            )
+            .checkbox(&mut self.preferences.show_j_preview, "Show J preview panel")
             .changed()
         {
             self.preferences.save();
@@ -208,12 +189,9 @@ impl MandelbRustApp {
         }
         if ui
             .add(
-                egui::Slider::new(
-                    &mut self.preferences.julia_preview_iterations,
-                    50..=1000,
-                )
-                .text("Preview iterations")
-                .logarithmic(true),
+                egui::Slider::new(&mut self.preferences.julia_preview_iterations, 50..=1000)
+                    .text("Preview iterations")
+                    .logarithmic(true),
             )
             .changed()
         {
@@ -239,28 +217,22 @@ impl MandelbRustApp {
         }
         if ui
             .add(
-                egui::Slider::new(
-                    &mut self.preferences.julia_explorer_extent_half,
-                    0.05..=4.0,
-                )
-                .logarithmic(true)
-                .text("C extent (zoom)"),
+                egui::Slider::new(&mut self.preferences.julia_explorer_extent_half, 0.05..=4.0)
+                    .logarithmic(true)
+                    .text("C extent (zoom)"),
             )
             .changed()
         {
             self.preferences.save();
-            self.julia_explorer_extent_half =
-                self.preferences.julia_explorer_extent_half;
+            self.julia_explorer_extent_half = self.preferences.julia_explorer_extent_half;
             self.julia_explorer_restart_pending = true;
         }
         ui.horizontal(|ui| {
             ui.label("Square size (px):");
             if ui
                 .add(
-                    egui::DragValue::new(
-                        &mut self.preferences.julia_explorer_cell_size_px,
-                    )
-                    .range(16..=256),
+                    egui::DragValue::new(&mut self.preferences.julia_explorer_cell_size_px)
+                        .range(16..=256),
                 )
                 .changed()
             {

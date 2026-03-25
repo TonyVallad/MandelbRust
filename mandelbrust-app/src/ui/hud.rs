@@ -13,8 +13,7 @@ impl MandelbRustApp {
             return;
         }
 
-        let hud_alpha =
-            (self.preferences.hud_panel_opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let hud_alpha = (self.preferences.hud_panel_opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
 
         // -- Top-left: viewport info --
         let top_y = HUD_MARGIN + self.menu_bar_height;
@@ -77,17 +76,12 @@ impl MandelbRustApp {
 
                         let phase_color = match self.render_phase {
                             RenderPhase::Idle => egui::Color32::GRAY,
-                            RenderPhase::Rendering | RenderPhase::Refining => {
-                                egui::Color32::YELLOW
-                            }
+                            RenderPhase::Rendering | RenderPhase::Refining => egui::Color32::YELLOW,
                             RenderPhase::Done => egui::Color32::from_rgb(100, 255, 100),
                         };
                         ui.colored_label(phase_color, self.render_phase.label());
 
-                        ui.label(format!(
-                            "{:.1} ms",
-                            self.render_time.as_secs_f64() * 1000.0,
-                        ));
+                        ui.label(format!("{:.1} ms", self.render_time.as_secs_f64() * 1000.0,));
                         ui.label(format!(
                             "{} tiles, {} mirrored, {} bt",
                             self.tiles_rendered, self.tiles_mirrored, self.tiles_border_traced,
@@ -107,9 +101,8 @@ impl MandelbRustApp {
         // -- J preview panel (Phase 10.5) --
         if self.preferences.show_j_preview {
             let size = self.preferences.minimap_size.side_pixels() as f32;
-            let j_alpha = (hud_alpha as f32
-                * self.preferences.minimap_opacity.clamp(0.0, 1.0))
-            .round() as u8;
+            let j_alpha =
+                (hud_alpha as f32 * self.preferences.minimap_opacity.clamp(0.0, 1.0)).round() as u8;
             let image_alpha =
                 (255.0 * self.preferences.minimap_opacity.clamp(0.0, 1.0)).round() as u8;
             let texture = self.j_preview_texture.as_ref().map(|(h, _)| h);

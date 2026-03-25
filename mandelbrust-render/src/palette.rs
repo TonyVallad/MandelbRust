@@ -148,8 +148,7 @@ impl Palette {
                         StartFrom::None => palette_color,
                     };
                 }
-                let blend =
-                    (iterations - low_start) as f64 / (low_end - low_start) as f64;
+                let blend = (iterations - low_start) as f64 / (low_end - low_start) as f64;
                 let (r, g, b) = match params.start_from {
                     StartFrom::Black => (0u8, 0u8, 0u8),
                     StartFrom::White => (255u8, 255u8, 255u8),
@@ -256,9 +255,7 @@ impl Palette {
             .for_each(|(idx, pixel)| {
                 let result = iter_buf.data[idx];
                 let c = match result {
-                    IterationResult::Interior => {
-                        color_interior(self, extras, idx, params)
-                    }
+                    IterationResult::Interior => color_interior(self, extras, idx, params),
                     IterationResult::Escaped {
                         iterations,
                         norm_sq,
@@ -339,9 +336,7 @@ impl Palette {
                 } else {
                     let result = iter_buf.data[idx];
                     match result {
-                        IterationResult::Interior => {
-                            color_interior(self, extras, idx, params)
-                        }
+                        IterationResult::Interior => color_interior(self, extras, idx, params),
                         IterationResult::Escaped {
                             iterations,
                             norm_sq,
@@ -389,9 +384,7 @@ impl Palette {
             .enumerate()
             .for_each(|(idx, pixel)| {
                 let c = match iter_buf.data[idx] {
-                    IterationResult::Interior => {
-                        color_interior(self, Some(extras), idx, params)
-                    }
+                    IterationResult::Interior => color_interior(self, Some(extras), idx, params),
                     IterationResult::Escaped { .. } => {
                         let d = extras.distance[idx];
                         let t = log_normalize(d, d_min, d_max);
@@ -437,7 +430,11 @@ impl Palette {
             ColoringMode::Standard => {
                 if params.interior_mode != InteriorMode::Black {
                     if let Some(ext) = extras {
-                        return self.colorize_with_interior(iter_buf, ext, aa, params);
+                        self.colorize_with_interior(iter_buf, ext, aa, params)
+                    } else if let Some(aa) = aa {
+                        self.colorize_aa(iter_buf, aa, params)
+                    } else {
+                        self.colorize(iter_buf, params)
                     }
                 } else if let Some(aa) = aa {
                     self.colorize_aa(iter_buf, aa, params)
@@ -770,7 +767,10 @@ mod tests {
         };
         let smooth = p.color(result, &params_smooth);
         let raw = p.color(result, &params_raw);
-        assert_ne!(smooth, raw, "smooth and raw iteration count should map to different colors");
+        assert_ne!(
+            smooth, raw,
+            "smooth and raw iteration count should map to different colors"
+        );
     }
 
     #[test]

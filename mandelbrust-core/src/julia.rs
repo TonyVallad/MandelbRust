@@ -134,11 +134,7 @@ impl Fractal for Julia {
 
             if n >= 32 && n & 3 == 0 {
                 if (z.re - old_z.re).abs() < 1e-13 && (z.im - old_z.im).abs() < 1e-13 {
-                    let stripe_avg = if n > 0 {
-                        stripe_sum / n as f64
-                    } else {
-                        0.0
-                    };
+                    let stripe_avg = if n > 0 { stripe_sum / n as f64 } else { 0.0 };
                     return (
                         IterationResult::Interior,
                         IterationExtras {

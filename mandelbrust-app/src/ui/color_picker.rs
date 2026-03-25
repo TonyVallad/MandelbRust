@@ -146,8 +146,7 @@ pub(crate) fn show_color_picker(ui: &mut egui::Ui, state: &mut ColorPickerState)
 
         // Hue bar
         let hue_size = egui::vec2(hue_bar_width, sv_size.y);
-        let (hue_rect, hue_resp) =
-            ui.allocate_exact_size(hue_size, egui::Sense::click_and_drag());
+        let (hue_rect, hue_resp) = ui.allocate_exact_size(hue_size, egui::Sense::click_and_drag());
         paint_hue_bar(ui.painter(), hue_rect);
 
         let hue_cursor_y = hue_rect.min.y + (state.hsv.h / 360.0) * hue_size.y;
@@ -159,8 +158,7 @@ pub(crate) fn show_color_picker(ui: &mut egui::Ui, state: &mut ColorPickerState)
 
         if hue_resp.dragged() || hue_resp.clicked() {
             if let Some(pos) = hue_resp.interact_pointer_pos() {
-                state.hsv.h =
-                    (((pos.y - hue_rect.min.y) / hue_size.y) * 360.0).clamp(0.0, 359.99);
+                state.hsv.h = (((pos.y - hue_rect.min.y) / hue_size.y) * 360.0).clamp(0.0, 359.99);
                 state.sync_from_hsv();
                 changed = true;
             }

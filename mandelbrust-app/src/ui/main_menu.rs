@@ -42,8 +42,7 @@ impl MandelbRustApp {
                 let tile_width = ((available.x - h_gaps) / 4.0).clamp(100.0, 290.0);
                 let tile_height = (available.y * 0.68).clamp(220.0, 460.0);
 
-                let total_width =
-                    tile_width * 4.0 + sep_gap * 2.0 + sep_width + tile_gap * 2.0;
+                let total_width = tile_width * 4.0 + sep_gap * 2.0 + sep_width + tile_gap * 2.0;
                 let x_offset = (available.x - total_width).max(0.0) / 2.0;
                 let y_offset = (available.y - tile_height).max(0.0) / 2.0;
 
@@ -311,7 +310,7 @@ fn format_dd_trimmed(dd: DoubleDouble) -> String {
     let mut val = dd.abs();
 
     let int_part = val.hi.trunc();
-    val = val - DoubleDouble::from(int_part);
+    val -= DoubleDouble::from(int_part);
     if val.is_negative() {
         val = DoubleDouble::ZERO;
     }
@@ -324,9 +323,9 @@ fn format_dd_trimmed(dd: DoubleDouble) -> String {
     result.push('.');
 
     for _ in 0..30 {
-        val = val * DoubleDouble::from(10.0);
+        val *= DoubleDouble::from(10.0);
         let digit = val.hi.trunc().clamp(0.0, 9.0) as u8;
-        val = val - DoubleDouble::from(digit as f64);
+        val -= DoubleDouble::from(digit as f64);
         if val.is_negative() {
             val = DoubleDouble::ZERO;
         }
@@ -358,11 +357,7 @@ fn format_f64_signed_trimmed(v: f64) -> String {
 fn trim_trailing_zeros(s: &mut String) {
     if s.contains('.') {
         let trimmed = s.trim_end_matches('0');
-        let trimmed = if trimmed.ends_with('.') {
-            &trimmed[..trimmed.len() - 1]
-        } else {
-            trimmed
-        };
+        let trimmed = trimmed.strip_suffix('.').unwrap_or(trimmed);
         s.truncate(trimmed.len());
     }
 }
@@ -386,12 +381,7 @@ fn save_preview_png(pixels: &[u8], width: u32, height: u32, path: &std::path::Pa
     };
 
     let final_img = if save_w != width {
-        image::imageops::resize(
-            &img,
-            save_w,
-            save_h,
-            image::imageops::FilterType::Lanczos3,
-        )
+        image::imageops::resize(&img, save_w, save_h, image::imageops::FilterType::Lanczos3)
     } else {
         img
     };
@@ -420,11 +410,7 @@ fn load_preview_texture(
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "preview".to_string());
-    Some(ctx.load_texture(
-        name,
-        color_image,
-        egui::TextureOptions::LINEAR,
-    ))
+    Some(ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR))
 }
 
 // ---------------------------------------------------------------------------
@@ -467,10 +453,8 @@ fn draw_tile(
         );
 
         let preview_h = (rect.height() * 0.40).min(180.0);
-        let preview_rect = egui::Rect::from_min_max(
-            rect.min,
-            egui::pos2(rect.max.x, rect.min.y + preview_h),
-        );
+        let preview_rect =
+            egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.min.y + preview_h));
 
         if let Some(tex) = preview_texture {
             let tex_size = tex.size_vec2();
@@ -482,17 +466,11 @@ fn draw_tile(
             } else if tex_aspect > rect_aspect {
                 let frac = rect_aspect / tex_aspect;
                 let margin = (1.0 - frac) / 2.0;
-                egui::Rect::from_min_max(
-                    egui::pos2(margin, 0.0),
-                    egui::pos2(1.0 - margin, 1.0),
-                )
+                egui::Rect::from_min_max(egui::pos2(margin, 0.0), egui::pos2(1.0 - margin, 1.0))
             } else {
                 let frac = tex_aspect / rect_aspect;
                 let margin = (1.0 - frac) / 2.0;
-                egui::Rect::from_min_max(
-                    egui::pos2(0.0, margin),
-                    egui::pos2(1.0, 1.0 - margin),
-                )
+                egui::Rect::from_min_max(egui::pos2(0.0, margin), egui::pos2(1.0, 1.0 - margin))
             };
 
             painter.image(tex.id(), preview_rect, uv, egui::Color32::WHITE);

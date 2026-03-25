@@ -152,10 +152,7 @@ impl Viewport {
     pub fn subpixel_to_delta(&self, px: f64, py: f64) -> Complex {
         let half_w = self.width as f64 / 2.0;
         let half_h = self.height as f64 / 2.0;
-        Complex::new(
-            (px - half_w) * self.scale,
-            -(py - half_h) * self.scale,
-        )
+        Complex::new((px - half_w) * self.scale, -(py - half_h) * self.scale)
     }
 
     /// The aspect ratio of the viewport (width / height).

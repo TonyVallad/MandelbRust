@@ -45,10 +45,7 @@ impl MandelbRustApp {
                     self.open_save_new_dialog();
                 }
             }
-            if ui
-                .add(shortcut_item("Open Bookmarks", "B"))
-                .clicked()
-            {
+            if ui.add(shortcut_item("Open Bookmarks", "B")).clicked() {
                 ui.close();
                 if in_explorer {
                     self.show_bookmarks = !self.show_bookmarks;
@@ -67,10 +64,7 @@ impl MandelbRustApp {
             }
             ui.separator();
             let export_item = shortcut_item("Export Image\u{2026}", "E");
-            if ui
-                .add_enabled(in_explorer, export_item)
-                .clicked()
-            {
+            if ui.add_enabled(in_explorer, export_item).clicked() {
                 ui.close();
                 self.open_export_dialog(ctx);
             }
@@ -90,10 +84,7 @@ impl MandelbRustApp {
                 ctx.copy_text(text);
             }
             ui.separator();
-            if ui
-                .add(shortcut_item("Reset View", "R"))
-                .clicked()
-            {
+            if ui.add(shortcut_item("Reset View", "R")).clicked() {
                 ui.close();
                 self.reset_view();
             }
@@ -129,7 +120,11 @@ impl MandelbRustApp {
         ui.menu_button("View", |ui| {
             if ui
                 .add(shortcut_item(
-                    if self.show_hud { "Hide HUD" } else { "Show HUD" },
+                    if self.show_hud {
+                        "Hide HUD"
+                    } else {
+                        "Show HUD"
+                    },
                     "H",
                 ))
                 .clicked()
@@ -183,10 +178,7 @@ impl MandelbRustApp {
                 self.show_crosshair = !self.show_crosshair;
             }
             ui.separator();
-            if ui
-                .add(shortcut_item("Cycle Anti-Aliasing", "A"))
-                .clicked()
-            {
+            if ui.add(shortcut_item("Cycle Anti-Aliasing", "A")).clicked() {
                 ui.close();
                 self.cycle_aa();
             }
@@ -297,8 +289,5 @@ impl MandelbRustApp {
 /// Build a `Button` with a right-aligned keyboard shortcut hint.
 fn shortcut_item(label: &str, shortcut: &str) -> egui::Button<'static> {
     let text = format!("{label}    {shortcut}");
-    egui::Button::new(
-        egui::RichText::new(text).size(13.0),
-    )
-    .wrap_mode(egui::TextWrapMode::Extend)
+    egui::Button::new(egui::RichText::new(text).size(13.0)).wrap_mode(egui::TextWrapMode::Extend)
 }

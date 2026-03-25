@@ -99,7 +99,10 @@ fn scan_bookmark_dir(dir: &std::path::Path) -> (Vec<Bookmark>, Vec<String>) {
                     bookmarks.push(bm);
                 }
                 Err(e) => {
-                    warn!("IO worker: skipping invalid bookmark {}: {e}", path.display());
+                    warn!(
+                        "IO worker: skipping invalid bookmark {}: {e}",
+                        path.display()
+                    );
                 }
             },
             Err(e) => {

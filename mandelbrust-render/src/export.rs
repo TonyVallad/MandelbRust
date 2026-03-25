@@ -41,16 +41,19 @@ pub fn export_png(
     encoder.set_depth(png::BitDepth::Eight);
     encoder.set_compression(png::Compression::Default);
 
-    encoder.add_text_chunk("Software".to_string(), "MandelbRust".to_string())
+    encoder
+        .add_text_chunk("Software".to_string(), "MandelbRust".to_string())
         .map_err(|e| format!("Failed to add text chunk: {e}"))?;
 
     let description = build_description(metadata);
-    encoder.add_text_chunk("Description".to_string(), description)
+    encoder
+        .add_text_chunk("Description".to_string(), description)
         .map_err(|e| format!("Failed to add text chunk: {e}"))?;
 
     let meta_pairs = build_metadata_pairs(metadata);
     for (key, value) in &meta_pairs {
-        encoder.add_text_chunk(key.clone(), value.clone())
+        encoder
+            .add_text_chunk(key.clone(), value.clone())
             .map_err(|e| format!("Failed to add text chunk '{key}': {e}"))?;
     }
 
@@ -83,12 +86,24 @@ fn build_metadata_pairs(meta: &ExportMetadata) -> Vec<(String, String)> {
         ("MandelbRust.CenterRe".into(), meta.center_re.clone()),
         ("MandelbRust.CenterIm".into(), meta.center_im.clone()),
         ("MandelbRust.Zoom".into(), meta.zoom.clone()),
-        ("MandelbRust.MaxIterations".into(), meta.max_iterations.to_string()),
-        ("MandelbRust.EscapeRadius".into(), format!("{}", meta.escape_radius)),
+        (
+            "MandelbRust.MaxIterations".into(),
+            meta.max_iterations.to_string(),
+        ),
+        (
+            "MandelbRust.EscapeRadius".into(),
+            format!("{}", meta.escape_radius),
+        ),
         ("MandelbRust.AALevel".into(), meta.aa_level.to_string()),
         ("MandelbRust.Palette".into(), meta.palette_name.clone()),
-        ("MandelbRust.SmoothColoring".into(), meta.smooth_coloring.to_string()),
-        ("MandelbRust.Resolution".into(), format!("{}x{}", meta.width, meta.height)),
+        (
+            "MandelbRust.SmoothColoring".into(),
+            meta.smooth_coloring.to_string(),
+        ),
+        (
+            "MandelbRust.Resolution".into(),
+            format!("{}x{}", meta.width, meta.height),
+        ),
     ];
     if let Some(re) = &meta.julia_c_re {
         pairs.push(("MandelbRust.JuliaC_Re".into(), re.clone()));
@@ -162,18 +177,20 @@ mod tests {
         let path = dir.join("test_meta.png");
         export_png(&pixels, w, h, &path, &meta).expect("export should succeed");
 
-        let decoder = png::Decoder::new(
-            std::fs::File::open(&path).expect("file should exist"),
-        );
+        let decoder = png::Decoder::new(std::fs::File::open(&path).expect("file should exist"));
         let reader = decoder.read_info().expect("should read info");
         let info = reader.info();
         let texts: Vec<_> = info.uncompressed_latin1_text.iter().collect();
         assert!(
-            texts.iter().any(|t| t.keyword == "Software" && t.text == "MandelbRust"),
+            texts
+                .iter()
+                .any(|t| t.keyword == "Software" && t.text == "MandelbRust"),
             "Should contain Software text chunk"
         );
         assert!(
-            texts.iter().any(|t| t.keyword == "MandelbRust.FractalType" && t.text == "Julia"),
+            texts
+                .iter()
+                .any(|t| t.keyword == "MandelbRust.FractalType" && t.text == "Julia"),
             "Should contain fractal type chunk"
         );
         assert!(

@@ -85,8 +85,7 @@ pub fn save_palette(palette: &PaletteDefinition) -> Result<(), String> {
     let path = dir
         .join(sanitize_name(&palette.name))
         .with_extension("json");
-    let json = serde_json::to_string_pretty(palette)
-        .map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(palette).map_err(|e| e.to_string())?;
     fs::write(&path, json).map_err(|e| e.to_string())?;
     info!("Saved palette to {}", path.display());
     Ok(())
