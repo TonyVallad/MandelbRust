@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::Arc;
+use std::time::Duration;
 
 use eframe::egui;
 use tracing::{debug, error, info};
@@ -16,7 +17,7 @@ use crate::display_color::{
     ColoringMode as DisplayColoringMode, DisplayColorSettings, InteriorMode as DisplayInteriorMode,
     PaletteMode as DisplayPaletteMode, StartFrom as DisplayStartFrom,
 };
-use crate::render_bridge::render_for_mode;
+use crate::render_bridge::{render_for_mode, RenderModeOptions};
 
 // ---------------------------------------------------------------------------
 // Resolution presets
@@ -499,6 +500,7 @@ impl MandelbRustApp {
 
                 ui.horizontal(|ui| {
                     if busy {
+                        ctx.request_repaint_after(Duration::from_millis(50));
                         let (done, total) = self.export_state.export_cancel.progress();
                         let pct = if total > 0 {
                             done as f32 / total as f32
@@ -634,6 +636,7 @@ impl MandelbRustApp {
             self.palettes[idx].clone()
         };
         let color_params = Self::color_params_from_display(export_dc, max_iter);
+        let allow_border_tracing = !color_params.smooth;
         let display_color = export_dc.clone();
         let needs_extras = export_dc.coloring_mode == DisplayColoringMode::DistanceEstimation
             || export_dc.interior_mode == DisplayInteriorMode::StripeAverage;
@@ -688,6 +691,7 @@ impl MandelbRustApp {
             metadata,
             path,
             compute_extras: needs_extras,
+            allow_border_tracing,
             stripe_density,
         };
 
@@ -786,6 +790,7 @@ struct ExportJob {
     metadata: ExportMetadata,
     path: PathBuf,
     compute_extras: bool,
+    allow_border_tracing: bool,
     stripe_density: f64,
 }
 
@@ -796,9 +801,12 @@ fn export_worker(job: &ExportJob) -> ExportWorkerResult {
         job.julia_c,
         &job.viewport,
         &job.cancel,
-        job.aa_level,
-        job.compute_extras,
-        job.stripe_density,
+        RenderModeOptions {
+            aa_level: job.aa_level,
+            compute_extras: job.compute_extras,
+            allow_border_tracing: job.allow_border_tracing,
+            stripe_density: job.stripe_density,
+        },
     );
 
     if result.cancelled {

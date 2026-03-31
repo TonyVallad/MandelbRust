@@ -99,6 +99,12 @@ pub struct RenderOptions {
     /// Compute per-pixel extras (distance estimate, stripe average).
     /// Disables border tracing and symmetry when true.
     pub compute_extras: bool,
+    /// Allow border-trace flood fill optimization.
+    ///
+    /// This should be disabled when smooth coloring is active because smooth
+    /// coloring relies on per-pixel continuous values (`norm_sq`), which are
+    /// lost when a full tile is filled from a single representative sample.
+    pub allow_border_tracing: bool,
     /// Stripe density for interior stripe average coloring.
     pub stripe_density: f64,
 }
@@ -108,6 +114,7 @@ impl Default for RenderOptions {
         Self {
             use_real_axis_symmetry: false,
             compute_extras: false,
+            allow_border_tracing: true,
             stripe_density: 1.0,
         }
     }
@@ -197,10 +204,9 @@ fn render_tile<F: Fractal>(
     viewport: &Viewport,
     tile: &Tile,
     bt_count: &AtomicUsize,
-    compute_extras: bool,
-    stripe_density: f64,
+    opts: &RenderOptions,
 ) -> TileData {
-    if !compute_extras {
+    if !opts.compute_extras && opts.allow_border_tracing {
         if let Some(fill) = check_border_uniform(fractal, viewport, tile) {
             bt_count.fetch_add(1, Ordering::Relaxed);
             return TileData {
@@ -212,7 +218,7 @@ fn render_tile<F: Fractal>(
 
     let count = tile.pixel_count();
     let mut iter_data = Vec::with_capacity(count);
-    let mut extras_data = if compute_extras {
+    let mut extras_data = if opts.compute_extras {
         Some(Vec::with_capacity(count))
     } else {
         None
@@ -221,8 +227,8 @@ fn render_tile<F: Fractal>(
     for py in 0..tile.height {
         for px in 0..tile.width {
             let c = map_pixel(fractal, viewport, tile.x + px, tile.y + py);
-            if compute_extras {
-                let (result, ext) = fractal.iterate_with_extras(c, stripe_density);
+            if opts.compute_extras {
+                let (result, ext) = fractal.iterate_with_extras(c, opts.stripe_density);
                 iter_data.push(result);
                 extras_data.as_mut().unwrap().push(ext);
             } else {
@@ -258,7 +264,6 @@ pub fn render<F: Fractal + Sync>(
     let gen = cancel.generation();
     let bt_count = AtomicUsize::new(0);
     let max_iter = fractal.params().max_iterations;
-    let compute_extras = opts.compute_extras;
 
     let tiles = build_tile_grid(viewport.width, viewport.height);
     let tile_count = tiles.len();
@@ -266,12 +271,12 @@ pub fn render<F: Fractal + Sync>(
         tile_count,
         width = viewport.width,
         height = viewport.height,
-        compute_extras,
+        compute_extras = opts.compute_extras,
         "Starting tiled render"
     );
 
     // Symmetry disabled when extras are on (stripe avg is not symmetric).
-    let use_symmetry = opts.use_real_axis_symmetry && !compute_extras;
+    let use_symmetry = opts.use_real_axis_symmetry && !opts.compute_extras;
     let classified = if use_symmetry {
         classify_tiles_for_symmetry(&tiles, viewport.height, viewport.center.im)
     } else {
@@ -288,31 +293,13 @@ pub fn render<F: Fractal + Sync>(
     cancel.reset_progress(renderable_count);
 
     let (tile_data, cancelled, tiles_rendered, tiles_mirrored) = if let Some(ref ct) = classified {
-        render_with_symmetry(
-            fractal,
-            viewport,
-            ct,
-            cancel,
-            gen,
-            &bt_count,
-            compute_extras,
-            opts.stripe_density,
-        )
+        render_with_symmetry(fractal, viewport, ct, cancel, gen, &bt_count, opts)
     } else {
-        render_all_tiles(
-            fractal,
-            viewport,
-            &tiles,
-            cancel,
-            gen,
-            &bt_count,
-            compute_extras,
-            opts.stripe_density,
-        )
+        render_all_tiles(fractal, viewport, &tiles, cancel, gen, &bt_count, opts)
     };
 
     let mut iterations = IterationBuffer::new(viewport.width, viewport.height, max_iter);
-    let mut extras = if compute_extras {
+    let mut extras = if opts.compute_extras {
         Some(ExtrasBuffer::new(viewport.width, viewport.height))
     } else {
         None
@@ -350,8 +337,7 @@ fn render_all_tiles<F: Fractal + Sync>(
     cancel: &Arc<RenderCancel>,
     gen: u64,
     bt_count: &AtomicUsize,
-    compute_extras: bool,
-    stripe_density: f64,
+    opts: &RenderOptions,
 ) -> (Vec<Option<TileData>>, bool, usize, usize) {
     let results: Vec<Option<TileData>> = tiles
         .par_iter()
@@ -359,14 +345,7 @@ fn render_all_tiles<F: Fractal + Sync>(
             if cancel.generation() != gen {
                 return None;
             }
-            let data = render_tile(
-                fractal,
-                viewport,
-                tile,
-                bt_count,
-                compute_extras,
-                stripe_density,
-            );
+            let data = render_tile(fractal, viewport, tile, bt_count, opts);
             cancel.inc_progress();
             Some(data)
         })
@@ -384,8 +363,7 @@ fn render_with_symmetry<F: Fractal + Sync>(
     cancel: &Arc<RenderCancel>,
     gen: u64,
     bt_count: &AtomicUsize,
-    compute_extras: bool,
-    stripe_density: f64,
+    opts: &RenderOptions,
 ) -> (Vec<Option<TileData>>, bool, usize, usize) {
     let results: Vec<Option<TileData>> = classified
         .par_iter()
@@ -396,14 +374,7 @@ fn render_with_symmetry<F: Fractal + Sync>(
             match ct.kind {
                 TileKind::Mirror { .. } => None,
                 _ => {
-                    let data = render_tile(
-                        fractal,
-                        viewport,
-                        &ct.tile,
-                        bt_count,
-                        compute_extras,
-                        stripe_density,
-                    );
+                    let data = render_tile(fractal, viewport, &ct.tile, bt_count, opts);
                     cancel.inc_progress();
                     Some(data)
                 }
@@ -528,6 +499,7 @@ mod tests {
         let opts = RenderOptions {
             use_real_axis_symmetry: false,
             compute_extras: true,
+            allow_border_tracing: false,
             stripe_density: 1.0,
         };
 

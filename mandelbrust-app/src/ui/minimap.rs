@@ -7,7 +7,7 @@ use mandelbrust_core::{Complex, Viewport};
 use mandelbrust_render::RenderCancel;
 
 use crate::app::{FractalMode, MandelbRustApp};
-use crate::render_bridge::render_for_mode;
+use crate::render_bridge::{render_for_mode, RenderModeOptions};
 
 impl MandelbRustApp {
     pub(crate) fn minimap_viewport(&self) -> Viewport {
@@ -54,7 +54,17 @@ impl MandelbRustApp {
         thread::spawn(move || {
             let cancel = Arc::new(RenderCancel::new());
             let result = render_for_mode(
-                mode, params, julia_c, &viewport, &cancel, MINIMAP_AA, false, 1.0,
+                mode,
+                params,
+                julia_c,
+                &viewport,
+                &cancel,
+                RenderModeOptions {
+                    aa_level: MINIMAP_AA,
+                    compute_extras: false,
+                    allow_border_tracing: true,
+                    stripe_density: 1.0,
+                },
             );
             let _ = tx.send((result, revision));
         });
@@ -128,9 +138,12 @@ impl MandelbRustApp {
                         cursor_c,
                         &viewport,
                         &cancel,
-                        J_PREVIEW_AA,
-                        false,
-                        1.0,
+                        RenderModeOptions {
+                            aa_level: J_PREVIEW_AA,
+                            compute_extras: false,
+                            allow_border_tracing: true,
+                            stripe_density: 1.0,
+                        },
                     );
                     let _ = tx.send((result, revision));
                 });
@@ -164,9 +177,12 @@ impl MandelbRustApp {
                         julia_c,
                         &viewport,
                         &cancel,
-                        J_PREVIEW_AA,
-                        false,
-                        1.0,
+                        RenderModeOptions {
+                            aa_level: J_PREVIEW_AA,
+                            compute_extras: false,
+                            allow_border_tracing: true,
+                            stripe_density: 1.0,
+                        },
                     );
                     let _ = tx.send((result, revision));
                 });

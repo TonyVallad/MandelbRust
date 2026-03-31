@@ -42,6 +42,15 @@ pub(crate) struct RenderRequest {
     pub(crate) julia_c: Complex,
     pub(crate) aa_level: u32,
     pub(crate) compute_extras: bool,
+    pub(crate) allow_border_tracing: bool,
+    pub(crate) stripe_density: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RenderModeOptions {
+    pub(crate) aa_level: u32,
+    pub(crate) compute_extras: bool,
+    pub(crate) allow_border_tracing: bool,
     pub(crate) stripe_density: f64,
 }
 
@@ -92,6 +101,7 @@ impl MandelbRustApp {
             julia_c: self.julia_c,
             aa_level: self.aa_level,
             compute_extras: self.needs_extras(),
+            allow_border_tracing: !self.display_color.smooth_coloring,
             stripe_density: self.display_color.stripe_density,
         };
 
@@ -119,6 +129,7 @@ impl MandelbRustApp {
             julia_c: self.julia_c,
             aa_level: 0,
             compute_extras: false,
+            allow_border_tracing: !self.display_color.smooth_coloring,
             stripe_density: self.display_color.stripe_density,
         };
 
@@ -291,33 +302,36 @@ pub(crate) fn render_for_mode(
     julia_c: Complex,
     viewport: &Viewport,
     cancel: &Arc<RenderCancel>,
-    aa_level: u32,
-    compute_extras: bool,
-    stripe_density: f64,
+    mode_opts: RenderModeOptions,
 ) -> RenderResult {
     let use_symmetry = mode == FractalMode::Mandelbrot;
     let use_dd = viewport.scale < DD_THRESHOLD_SCALE;
     let opts = RenderOptions {
         use_real_axis_symmetry: use_symmetry,
-        compute_extras,
-        stripe_density,
+        compute_extras: mode_opts.compute_extras,
+        allow_border_tracing: mode_opts.allow_border_tracing,
+        stripe_density: mode_opts.stripe_density,
     };
     match (mode, use_dd) {
-        (FractalMode::Mandelbrot, false) => {
-            do_render(&Mandelbrot::new(params), viewport, cancel, aa_level, &opts)
-        }
+        (FractalMode::Mandelbrot, false) => do_render(
+            &Mandelbrot::new(params),
+            viewport,
+            cancel,
+            mode_opts.aa_level,
+            &opts,
+        ),
         (FractalMode::Mandelbrot, true) => do_render(
             &MandelbrotDD::new(params, viewport.center_dd),
             viewport,
             cancel,
-            aa_level,
+            mode_opts.aa_level,
             &opts,
         ),
         (FractalMode::Julia, false) => do_render(
             &Julia::new(julia_c, params),
             viewport,
             cancel,
-            aa_level,
+            mode_opts.aa_level,
             &RenderOptions {
                 use_real_axis_symmetry: false,
                 ..opts
@@ -327,7 +341,7 @@ pub(crate) fn render_for_mode(
             &JuliaDD::new(ComplexDD::from(julia_c), params, viewport.center_dd),
             viewport,
             cancel,
-            aa_level,
+            mode_opts.aa_level,
             &RenderOptions {
                 use_real_axis_symmetry: false,
                 ..opts
@@ -353,9 +367,12 @@ pub(crate) fn render_worker(
                 req.julia_c,
                 &preview_vp,
                 &cancel,
-                0,
-                false,
-                req.stripe_density,
+                RenderModeOptions {
+                    aa_level: 0,
+                    compute_extras: false,
+                    allow_border_tracing: req.allow_border_tracing,
+                    stripe_density: req.stripe_density,
+                },
             );
 
             if preview.cancelled {
@@ -384,9 +401,12 @@ pub(crate) fn render_worker(
                 req.julia_c,
                 &req.viewport,
                 &cancel,
-                req.aa_level,
-                req.compute_extras,
-                req.stripe_density,
+                RenderModeOptions {
+                    aa_level: req.aa_level,
+                    compute_extras: req.compute_extras,
+                    allow_border_tracing: req.allow_border_tracing,
+                    stripe_density: req.stripe_density,
+                },
             );
 
             if full.cancelled {
